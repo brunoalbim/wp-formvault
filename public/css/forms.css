@@ -1,0 +1,30 @@
+.wpfv-form-notice {
+	box-sizing: border-box;
+	margin: 0 0 20px;
+	padding: 14px 18px;
+	border: 1px solid transparent;
+	border-radius: 12px;
+	font: inherit;
+}
+
+.wpfv-form-notice[hidden] {
+	display: none;
+}
+
+.wpfv-form-notice.is-success {
+	border-color: #6aa77b;
+	background: #edf8f0;
+	color: #205c32;
+}
+
+.wpfv-form-notice.is-error {
+	border-color: #d87575;
+	background: #fff0f0;
+	color: #8f2525;
+}
+
+form[data-wpfv-form][aria-busy="true"] [type="submit"] {
+	cursor: wait;
+	opacity: 0.72;
+}
+.wpfv-field-error{display:block;color:#b32d2e;font-size:13px;margin-top:5px}.wpfv-field-error[hidden]{display:none}
