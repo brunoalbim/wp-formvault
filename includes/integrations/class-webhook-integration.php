@@ -17,16 +17,11 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 			return array( 'success' => false, 'code' => 0, 'error' => 'URL de webhook inválida.' );
 		}
 
-		$mapped_fields = ( new WPFV_Field_Mapper() )->webhook_fields( json_decode( $submission->fields, true ), $settings );
-		$payload = array(
-			'event'         => 'form.submitted',
-			'submission_id' => (int) $submission->id,
-			'form'          => array( 'id' => $submission->form_id, 'name' => $submission->form_name ),
-			'fields'        => $mapped_fields,
-			'attribution'   => json_decode( $submission->attribution, true ),
-			'page'          => array( 'url' => $submission->source_url, 'title' => $submission->source_title ),
-			'submitted_at'  => mysql2date( DATE_ATOM, $submission->created_at, false ),
-			'integrations'  => isset( $submission->integration_results ) ? $submission->integration_results : array(),
+		$mapped_fields        = ( new WPFV_Field_Mapper() )->webhook_fields( json_decode( $submission->fields, true ), $settings );
+		$mapped_fields['utm'] = (object) $this->last_utm( json_decode( $submission->attribution, true ) );
+		$payload              = array(
+			'source' => sanitize_key( $submission->form_id ),
+			'form'   => $mapped_fields,
 		);
 		$body    = wp_json_encode( $payload );
 		$headers = array(
@@ -55,5 +50,21 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 			'body'    => substr( wp_remote_retrieve_body( $response ), 0, 2000 ),
 			'error'   => $code >= 200 && $code < 300 ? '' : 'O webhook respondeu com HTTP ' . $code . '.',
 		);
+	}
+
+	private function last_utm( $attribution ) {
+		$attribution = is_array( $attribution ) ? $attribution : array();
+		$utm         = array();
+		foreach ( array( 'source', 'medium', 'campaign', 'term', 'content' ) as $name ) {
+			$stored_key = 'last_utm_' . $name;
+			if ( ! isset( $attribution[ $stored_key ] ) || ! is_scalar( $attribution[ $stored_key ] ) ) {
+				continue;
+			}
+			$value = sanitize_text_field( $attribution[ $stored_key ] );
+			if ( '' !== $value ) {
+				$utm[ 'utm_' . $name ] = $value;
+			}
+		}
+		return $utm;
 	}
 }

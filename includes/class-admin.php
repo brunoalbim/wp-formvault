@@ -305,7 +305,7 @@ class WPFV_Admin {
 
 				<section id="wpfv-webhook" class="wpfv-tab-panel" hidden>
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Entrega via webhook</h2><p>Envie o contato em JSON para uma aplicação externa.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Ativação</th><td><label><input type="checkbox" name="webhook_enabled" value="1" <?php checked( $settings['webhook_enabled'] ); ?>> Enviar webhook</label></td></tr><tr><th scope="row"><label for="wpfv-webhook-url">URL</label></th><td><input id="wpfv-webhook-url" class="large-text code" type="url" name="webhook_url" value="<?php echo esc_attr( $settings['webhook_url'] ); ?>"></td></tr><tr><th scope="row"><label for="wpfv-webhook-secret">Segredo HMAC</label></th><td><input id="wpfv-webhook-secret" class="large-text" type="password" autocomplete="new-password" name="webhook_secret" value="" placeholder="<?php echo $settings['webhook_secret'] ? esc_attr__( 'Segredo configurado — deixe vazio para manter', 'wp-formvault' ) : ''; ?>"><p class="description">Assina o corpo no header <code>X-WP-FormVault-Signature</code>.</p></td></tr></table></div></div>
-					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento de campos</h2><p>Renomeie as chaves enviadas no objeto <code>fields</code>. Cada origem e destino deve ser único.</p></div><div class="wpfv-card-body"><?php $this->mapping_rows( 'webhook', $settings['webhook_field_map'], $form, false ); ?></div></div>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento de campos</h2><p>Renomeie as chaves enviadas no objeto <code>form</code>. Cada origem e destino deve ser único; <code>utm</code> é reservado.</p></div><div class="wpfv-card-body"><?php $this->mapping_rows( 'webhook', $settings['webhook_field_map'], $form, false ); ?></div></div>
 				</section>
 
 				<?php if ( $pipedrive_configured ) : ?>
@@ -557,7 +557,7 @@ class WPFV_Admin {
 		foreach ( $rows as $row ) {
 			$source = $row['source'];
 			$target = $row['target'];
-			if ( ! isset( $form_fields[ $source ] ) || isset( $renames[ $source ] ) || isset( $targets[ $target ] ) ) {
+			if ( 'utm' === $target || ! isset( $form_fields[ $source ] ) || isset( $renames[ $source ] ) || isset( $targets[ $target ] ) ) {
 				continue;
 			}
 			$renames[ $source ] = $target;

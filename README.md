@@ -70,6 +70,25 @@ O helper adiciona `action`, ID do formulário e nonce. O atributo `data-wpfv-for
 
 Somente campos declarados no esquema são processados. Não inclua credenciais, URLs ou dados específicos de cliente no código reutilizável.
 
+## Payload do webhook
+
+O webhook envia o ID do formulário em `source` e os campos do contato em `form`. Os nomes configurados no mapeamento são preservados, inclusive espaços, acentos e letras maiúsculas. A chave `form.utm` é reservada e contém somente os dados da última campanha atribuída ao contato.
+
+```json
+{
+	"source": "example_contact",
+	"form": {
+		"Nome": "Maria",
+		"E-mail": "maria@empresa.com",
+		"utm": {
+			"utm_source": "google",
+			"utm_medium": "cpc",
+			"utm_campaign": "campanha-exemplo"
+		}
+	}
+}
+```
+
 ## Extensão
 
 Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo filtro `wpfv_integrations`.
