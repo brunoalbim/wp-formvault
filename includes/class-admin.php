@@ -305,7 +305,7 @@ class WPFV_Admin {
 
 				<section id="wpfv-webhook" class="wpfv-tab-panel" hidden>
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Entrega via webhook</h2><p>Envie o contato em JSON para uma aplicação externa.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Ativação</th><td><label><input type="checkbox" name="webhook_enabled" value="1" <?php checked( $settings['webhook_enabled'] ); ?>> Enviar webhook</label></td></tr><tr><th scope="row"><label for="wpfv-webhook-url">URL</label></th><td><input id="wpfv-webhook-url" class="large-text code" type="url" name="webhook_url" value="<?php echo esc_attr( $settings['webhook_url'] ); ?>"></td></tr><tr><th scope="row"><label for="wpfv-webhook-secret">Segredo HMAC</label></th><td><input id="wpfv-webhook-secret" class="large-text" type="password" autocomplete="new-password" name="webhook_secret" value="" placeholder="<?php echo $settings['webhook_secret'] ? esc_attr__( 'Segredo configurado — deixe vazio para manter', 'wp-formvault' ) : ''; ?>"><p class="description">Assina o corpo no header <code>X-WP-FormVault-Signature</code>.</p></td></tr></table></div></div>
-					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento de campos</h2><p>Renomeie as chaves enviadas no objeto <code>fields</code>.</p></div><div class="wpfv-card-body"><?php $this->mapping_rows( 'webhook', $settings['webhook_field_map'], $form, false ); ?></div></div>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento de campos</h2><p>Renomeie as chaves enviadas no objeto <code>fields</code>. Cada origem e destino deve ser único.</p></div><div class="wpfv-card-body"><?php $this->mapping_rows( 'webhook', $settings['webhook_field_map'], $form, false ); ?></div></div>
 				</section>
 
 				<?php if ( $pipedrive_configured ) : ?>
@@ -335,7 +335,36 @@ class WPFV_Admin {
 	}
 
 	private function field_options( $form, $selected = '' ) { foreach ( $form['fields'] as $id => $field ) { echo '<option value="' . esc_attr( $id ) . '" ' . selected( $selected, $id, false ) . '>' . esc_html( $field['label'] . ' (' . $id . ')' ) . '</option>'; } }
-	private function mapping_rows( $prefix, $rows, $form, $uppercase = false ) { $rows = $rows ? $rows : array( array( 'source' => '', 'target' => '' ) ); echo '<table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário</th><th>Destino</th></tr></thead><tbody>'; foreach ( $rows as $row ) { echo '<tr><td><select class="regular-text" aria-label="Campo do formulário" name="' . esc_attr( $prefix ) . '_source[]"><option value="">— Selecione —</option>'; $this->field_options( $form, isset( $row['source'] ) ? $row['source'] : '' ); echo '</select></td><td><input class="regular-text" type="text" aria-label="Destino" name="' . esc_attr( $prefix ) . '_target[]" value="' . esc_attr( isset( $row['target'] ) ? $row['target'] : '' ) . '" placeholder="' . ( $uppercase ? 'EMAIL ou FNAME' : 'nome_da_chave' ) . '"></td></tr>'; } for ( $i=0; $i<4; $i++ ) { echo '<tr><td><select class="regular-text" aria-label="Campo do formulário" name="' . esc_attr( $prefix ) . '_source[]"><option value="">— Selecione —</option>'; $this->field_options( $form ); echo '</select></td><td><input class="regular-text" type="text" aria-label="Destino" name="' . esc_attr( $prefix ) . '_target[]"></td></tr>'; } echo '</tbody></table>'; }
+	private function mapping_rows( $prefix, $rows, $form, $uppercase = false ) {
+		$rows        = $rows ? $rows : array( array( 'source' => '', 'target' => '' ) );
+		$placeholder = $uppercase ? 'EMAIL ou FNAME' : ( 'webhook' === $prefix ? 'Ex.: Área de atuação' : 'nome_da_chave' );
+		echo '<div class="wpfv-field-mapping" data-mapping-prefix="' . esc_attr( $prefix ) . '">';
+		echo '<table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário</th><th>Destino</th><th class="wpfv-mapping-actions">Ações</th></tr></thead><tbody>';
+		foreach ( $rows as $row ) {
+			$this->mapping_row( $prefix, $form, $placeholder, $row );
+		}
+		echo '</tbody></table>';
+		echo '<p><button type="button" class="button wpfv-add-mapping">Adicionar campo</button></p>';
+		echo '<template class="wpfv-mapping-template"><tr>';
+		$this->mapping_cells( $prefix, $form, $placeholder, array() );
+		echo '</tr></template></div>';
+	}
+
+	private function mapping_row( $prefix, $form, $placeholder, $row ) {
+		echo '<tr>';
+		$this->mapping_cells( $prefix, $form, $placeholder, $row );
+		echo '</tr>';
+	}
+
+	private function mapping_cells( $prefix, $form, $placeholder, $row ) {
+		$source     = isset( $row['source'] ) ? $row['source'] : '';
+		$target     = isset( $row['target'] ) ? $row['target'] : '';
+		$maxlength  = 'webhook' === $prefix ? ' maxlength="191"' : '';
+		echo '<td><select class="regular-text wpfv-mapping-source" aria-label="Campo do formulário" name="' . esc_attr( $prefix ) . '_source[]"><option value="">— Selecione —</option>';
+		$this->field_options( $form, $source );
+		echo '</select></td><td><input class="regular-text wpfv-mapping-target" type="text"' . $maxlength . ' aria-label="Destino" name="' . esc_attr( $prefix ) . '_target[]" value="' . esc_attr( $target ) . '" placeholder="' . esc_attr( $placeholder ) . '"></td>';
+		echo '<td class="wpfv-mapping-actions"><button type="button" class="button-link-delete wpfv-remove-mapping" aria-label="Remover este mapeamento">Remover</button></td>';
+	}
 	private function pipedrive_rows( $rows, $form ) { $rows = $rows ? $rows : array(); echo '<table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário</th><th>Entidade</th><th>Campo no Pipedrive</th></tr></thead><tbody>'; $total=max( 6, count( $rows )+3 ); for($i=0;$i<$total;$i++){ $r=isset($rows[$i])?$rows[$i]:array(); echo '<tr><td><select name="pd_source[]"><option value="">— Selecione —</option>'; $this->field_options($form,isset($r['source'])?$r['source']:''); echo '</select></td><td><select name="pd_entity[]" class="wpfv-pd-entity"><option value="person" '.selected(isset($r['entity'])?$r['entity']:'person','person',false).'>Pessoa</option><option value="organization" '.selected(isset($r['entity'])?$r['entity']:'','organization',false).'>Empresa</option><option value="deal" '.selected(isset($r['entity'])?$r['entity']:'','deal',false).'>Negociação</option></select></td><td><select class="regular-text wpfv-pd-target" name="pd_target[]" data-selected="'.esc_attr(isset($r['target'])?$r['target']:'').'"><option value="'.esc_attr(isset($r['target'])?$r['target']:'').'">— Carregando campos —</option></select></td></tr>'; } echo '</tbody></table>'; }
 	private function validation_textarea( $name, $label, $validation ) { $id = 'wpfv-' . sanitize_html_class( str_replace( '_', '-', $name ) ); echo '<p><label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label><br><textarea id="' . esc_attr( $id ) . '" class="large-text code" rows="5" name="' . esc_attr( $name ) . '">' . esc_textarea( implode( "\n", (array) $validation[$name] ) ) . '</textarea></p>'; }
 
@@ -485,7 +514,7 @@ class WPFV_Admin {
 				'webhook_enabled'  => ! empty( $_POST['webhook_enabled'] ),
 				'webhook_url'      => isset( $_POST['webhook_url'] ) ? esc_url_raw( wp_unslash( $_POST['webhook_url'] ) ) : '',
 				'webhook_secret'   => $webhook_secret,
-				'webhook_field_map'=> $this->sanitize_map( 'webhook_source', 'webhook_target' ),
+				'webhook_field_map'=> $this->sanitize_webhook_map( $form ),
 				'pipedrive_enabled'=> $has_pipedrive ? ! empty( $_POST['pipedrive_enabled'] ) : $current_settings['pipedrive_enabled'],
 				'pipedrive_pipeline_id'=> $has_pipedrive && isset($_POST['pipedrive_pipeline_id']) ? absint($_POST['pipedrive_pipeline_id']) : $current_settings['pipedrive_pipeline_id'],
 				'pipedrive_stage_id'=> $has_pipedrive && isset($_POST['pipedrive_stage_id']) ? absint($_POST['pipedrive_stage_id']) : $current_settings['pipedrive_stage_id'],
@@ -504,6 +533,53 @@ class WPFV_Admin {
 
 	private function sanitize_lines( $key ) { $raw=isset($_POST[$key])?sanitize_textarea_field(wp_unslash($_POST[$key])):''; return array_values(array_filter(array_map('trim',preg_split('/\R/',$raw)))); }
 	private function sanitize_map( $source_key, $target_key ) { $sources=isset($_POST[$source_key])?(array)wp_unslash($_POST[$source_key]):array(); $targets=isset($_POST[$target_key])?(array)wp_unslash($_POST[$target_key]):array(); $out=array(); foreach($sources as $i=>$source){$source=sanitize_key($source);$target=isset($targets[$i])?sanitize_key($targets[$i]):'';if($source&&$target){$out[]=array('source'=>$source,'target'=>$target);}}return $out; }
+	private function sanitize_webhook_map( $form ) {
+		$raw_sources = isset( $_POST['webhook_source'] ) ? (array) wp_unslash( $_POST['webhook_source'] ) : array();
+		$raw_targets = isset( $_POST['webhook_target'] ) ? (array) wp_unslash( $_POST['webhook_target'] ) : array();
+		$rows        = array();
+		foreach ( $raw_sources as $index => $raw_source ) {
+			if ( ! is_scalar( $raw_source ) ) {
+				continue;
+			}
+			$source = sanitize_key( $raw_source );
+			$target = isset( $raw_targets[ $index ] ) && is_scalar( $raw_targets[ $index ] ) ? trim( sanitize_text_field( $raw_targets[ $index ] ) ) : '';
+			if ( function_exists( 'mb_substr' ) ) {
+				$target = mb_substr( $target, 0, 191 );
+			}
+			if ( $source && $target ) {
+				$rows[] = array( 'source' => $source, 'target' => $target );
+			}
+		}
+
+		$form_fields = array_fill_keys( array_keys( $form['fields'] ), true );
+		$renames     = array();
+		$targets     = array();
+		foreach ( $rows as $row ) {
+			$source = $row['source'];
+			$target = $row['target'];
+			if ( ! isset( $form_fields[ $source ] ) || isset( $renames[ $source ] ) || isset( $targets[ $target ] ) ) {
+				continue;
+			}
+			$renames[ $source ] = $target;
+			$targets[ $target ] = true;
+		}
+
+		do {
+			$changed = false;
+			foreach ( $renames as $source => $target ) {
+				if ( $target !== $source && isset( $form_fields[ $target ] ) && ! isset( $renames[ $target ] ) ) {
+					unset( $renames[ $source ] );
+					$changed = true;
+				}
+			}
+		} while ( $changed );
+
+		$out = array();
+		foreach ( $renames as $source => $target ) {
+			$out[] = array( 'source' => $source, 'target' => $target );
+		}
+		return $out;
+	}
 	private function sanitize_pd_map(){ $sources=isset($_POST['pd_source'])?(array)wp_unslash($_POST['pd_source']):array();$entities=isset($_POST['pd_entity'])?(array)wp_unslash($_POST['pd_entity']):array();$targets=isset($_POST['pd_target'])?(array)wp_unslash($_POST['pd_target']):array();$out=array();foreach($sources as $i=>$source){$source=sanitize_key($source);$entity=isset($entities[$i])?sanitize_key($entities[$i]):'';$target=isset($targets[$i])?sanitize_text_field($targets[$i]):'';if($source&&in_array($entity,array('person','organization','deal'),true)&&$target){$out[]=array('source'=>$source,'entity'=>$entity,'target'=>$target);}}return $out; }
 	private function sanitize_validation(){return array('phone_validation'=>!empty($_POST['phone_validation']),'phone_message'=>isset($_POST['phone_message'])?sanitize_text_field(wp_unslash($_POST['phone_message'])):'','email_block_enabled'=>!empty($_POST['email_block_enabled']),'email_block_domains'=>$this->sanitize_lines('email_block_domains'),'email_block_suffixes'=>$this->sanitize_lines('email_block_suffixes'),'email_block_words'=>$this->sanitize_lines('email_block_words'),'email_msg_domains'=>isset($_POST['email_msg_domains'])?sanitize_text_field(wp_unslash($_POST['email_msg_domains'])):'','email_msg_suffixes'=>isset($_POST['email_msg_suffixes'])?sanitize_text_field(wp_unslash($_POST['email_msg_suffixes'])):'','email_msg_words'=>isset($_POST['email_msg_words'])?sanitize_text_field(wp_unslash($_POST['email_msg_words'])):'');}
 }

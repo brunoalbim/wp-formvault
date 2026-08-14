@@ -28,6 +28,36 @@
 		}
 	}
 
+	document.querySelectorAll( '.wpfv-field-mapping' ).forEach( function ( mapping ) {
+		const body = mapping.querySelector( 'tbody' );
+		const template = mapping.querySelector( '.wpfv-mapping-template' );
+		const addButton = mapping.querySelector( '.wpfv-add-mapping' );
+
+		if ( ! body || ! template || ! addButton ) {
+			return;
+		}
+
+		addButton.addEventListener( 'click', function () {
+			const row = template.content.firstElementChild.cloneNode( true );
+			body.appendChild( row );
+			row.querySelector( '.wpfv-mapping-source' ).focus();
+		} );
+
+		mapping.addEventListener( 'click', function ( event ) {
+			const removeButton = event.target.closest( '.wpfv-remove-mapping' );
+			if ( ! removeButton ) {
+				return;
+			}
+			const row = removeButton.closest( 'tr' );
+			if ( row ) {
+				row.remove();
+			}
+			if ( ! body.children.length ) {
+				addButton.click();
+			}
+		} );
+	} );
+
 	function requestCatalog( catalog, extra ) {
 		const body = new URLSearchParams( Object.assign( {
 			action: 'wpfv_pipedrive_catalog',

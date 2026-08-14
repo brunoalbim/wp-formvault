@@ -72,6 +72,11 @@
 	vertical-align: middle;
 }
 
+.wpfv-mapping-table .wpfv-mapping-actions {
+	width: 1%;
+	white-space: nowrap;
+}
+
 .wpfv-inline-fields {
 	display: grid;
 	grid-template-columns: max-content minmax(220px, 1fr) max-content minmax(220px, 1fr);
