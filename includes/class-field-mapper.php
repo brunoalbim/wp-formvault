@@ -35,11 +35,31 @@ class WPFV_Field_Mapper {
 	}
 
 	public function webhook_fields( $fields, $settings ) {
-		$mapped = $fields;
+		$original = is_array( $fields ) ? $fields : array();
+		$renames  = array();
+		$targets  = array();
 		foreach ( (array) $settings['webhook_field_map'] as $row ) {
-			$source = isset( $row['source'] ) ? sanitize_key( $row['source'] ) : '';
-			$target = isset( $row['target'] ) ? sanitize_key( $row['target'] ) : '';
-			if ( $source && $target && array_key_exists( $source, $mapped ) ) { $mapped[ $target ] = $mapped[ $source ]; if ( $target !== $source ) { unset( $mapped[ $source ] ); } }
+			$source = isset( $row['source'] ) && is_scalar( $row['source'] ) ? sanitize_key( $row['source'] ) : '';
+			$target = isset( $row['target'] ) && is_scalar( $row['target'] ) ? trim( sanitize_text_field( $row['target'] ) ) : '';
+			if ( ! $source || ! $target || ! array_key_exists( $source, $original ) || isset( $renames[ $source ] ) || isset( $targets[ $target ] ) ) {
+				continue;
+			}
+			$renames[ $source ] = $target;
+			$targets[ $target ] = true;
+		}
+
+		$mapped = $original;
+		foreach ( $renames as $source => $target ) {
+			if ( $target !== $source && array_key_exists( $target, $original ) && ! isset( $renames[ $target ] ) ) {
+				unset( $renames[ $source ] );
+				continue;
+			}
+			if ( $target !== $source ) {
+				unset( $mapped[ $source ] );
+			}
+		}
+		foreach ( $renames as $source => $target ) {
+			$mapped[ $target ] = $original[ $source ];
 		}
 		return $mapped;
 	}
