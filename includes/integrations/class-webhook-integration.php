@@ -17,11 +17,19 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 			return array( 'success' => false, 'code' => 0, 'error' => 'URL de webhook inválida.' );
 		}
 
-		$mapped_fields        = ( new WPFV_Field_Mapper() )->webhook_fields( json_decode( $submission->fields, true ), $settings );
-		$mapped_fields['utm'] = (object) $this->last_utm( json_decode( $submission->attribution, true ) );
-		$payload              = array(
-			'source' => sanitize_key( $submission->form_id ),
-			'form'   => $mapped_fields,
+		$source        = sanitize_key( $submission->form_id );
+		$mapped_fields = ( new WPFV_Field_Mapper() )->webhook_fields( json_decode( $submission->fields, true ), $settings );
+		$payload       = array(
+			'source' => $source,
+			'form'   => array(
+				'source' => $source,
+				'fields' => (object) $mapped_fields,
+				'page'   => array(
+					'title'          => sanitize_text_field( $submission->source_title ),
+					'conversion_url' => esc_url_raw( $submission->source_url ),
+				),
+				'utm'    => (object) $this->last_utm( json_decode( $submission->attribution, true ) ),
+			),
 		);
 		$body    = wp_json_encode( $payload );
 		$headers = array(

@@ -72,14 +72,21 @@ Somente campos declarados no esquema são processados. Não inclua credenciais, 
 
 ## Payload do webhook
 
-O webhook envia o ID do formulário em `source` e os campos do contato em `form`. Os nomes configurados no mapeamento são preservados, inclusive espaços, acentos e letras maiúsculas. A chave `form.utm` é reservada e contém somente os dados da última campanha atribuída ao contato.
+O webhook envia o ID do formulário tanto em `source` quanto em `form.source`. Os campos do contato ficam isolados em `form.fields`, preservando os nomes configurados no mapeamento, inclusive espaços, acentos e letras maiúsculas. `form.page` identifica a página em que o envio aconteceu e `form.utm` contém somente os dados da última campanha atribuída ao contato.
 
 ```json
 {
 	"source": "example_contact",
 	"form": {
-		"Nome": "Maria",
-		"E-mail": "maria@empresa.com",
+		"source": "example_contact",
+		"fields": {
+			"Nome": "Maria",
+			"E-mail": "maria@empresa.com"
+		},
+		"page": {
+			"title": "Contato",
+			"conversion_url": "https://example.com/contato/"
+		},
 		"utm": {
 			"utm_source": "google",
 			"utm_medium": "cpc",
