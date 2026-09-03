@@ -84,6 +84,20 @@ class WPFV_Submission_Repository {
 		);
 	}
 
+	/** Delete one submission and its local delivery/log history. */
+	public function delete( $id ) {
+		global $wpdb;
+		$id = absint( $id );
+		if ( ! $id || ! $this->get( $id ) ) { return false; }
+		$wpdb->query( 'START TRANSACTION' );
+		$logs       = $wpdb->delete( $wpdb->prefix . 'wpfv_logs', array( 'submission_id' => $id ), array( '%d' ) );
+		$deliveries = $wpdb->delete( $wpdb->prefix . 'wpfv_deliveries', array( 'submission_id' => $id ), array( '%d' ) );
+		$submission = $wpdb->delete( $wpdb->prefix . 'wpfv_submissions', array( 'id' => $id ), array( '%d' ) );
+		if ( false === $logs || false === $deliveries || 1 !== $submission ) { $wpdb->query( 'ROLLBACK' ); return false; }
+		$wpdb->query( 'COMMIT' );
+		return true;
+	}
+
 	/**
 	 * Query submissions for the admin list.
 	 *

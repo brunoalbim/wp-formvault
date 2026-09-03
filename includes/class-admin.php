@@ -24,9 +24,15 @@ class WPFV_Admin {
 		add_action( 'admin_post_wpfv_clear_logs', array( $this, 'clear_logs' ) );
 		add_action( 'wp_ajax_wpfv_test_pipedrive', array( $this, 'test_pipedrive' ) );
 		add_action( 'wp_ajax_wpfv_test_brevo', array( $this, 'test_brevo' ) );
+		add_action( 'wp_ajax_wpfv_test_rdcrm', array( $this, 'test_rdcrm' ) );
+		add_action( 'wp_ajax_wpfv_rdcrm_catalog', array( $this, 'rdcrm_catalog' ) );
+		add_action( 'admin_post_wpfv_rdcrm_connect', array( $this, 'rdcrm_connect' ) );
+		add_action( 'admin_post_wpfv_rdcrm_oauth_callback', array( $this, 'rdcrm_oauth_callback' ) );
+		add_action( 'admin_post_wpfv_rdcrm_disconnect', array( $this, 'rdcrm_disconnect' ) );
 		add_action( 'wp_ajax_wpfv_pipedrive_catalog', array( $this, 'pipedrive_catalog' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_post_wpfv_retry_delivery', array( $this, 'retry_delivery' ) );
+		add_action( 'admin_post_wpfv_delete_submission', array( $this, 'delete_submission' ) );
 	}
 
 	public function enqueue_assets( $hook ) {
@@ -70,13 +76,14 @@ class WPFV_Admin {
 		?>
 		<div class="wrap"><h1>Contatos</h1>
 		<?php if ( isset( $_GET['retried'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Integração reenviada. O novo status já aparece na listagem.</p></div><?php endif; ?>
+		<?php if ( isset( $_GET['deleted'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Envio excluído com seu histórico local.</p></div><?php endif; ?>
 		<style>.wpfv-badge{display:inline-block;margin:2px 4px 2px 0;padding:4px 9px;border-radius:999px;font-weight:600;white-space:nowrap}.wpfv-badge--success{background:#d8f0df;color:#18743a}.wpfv-badge--error{background:#f8d7da;color:#9c2430}.wpfv-badge--pending{background:#fff0c2;color:#785b00}.wpfv-integration{margin-bottom:5px}.wpfv-retry{margin-left:4px}</style>
 		<form method="get"><input type="hidden" name="page" value="wpfv-submissions">
 		<select name="form_id"><option value="">Todos os formulários</option><?php foreach ( $forms as $form ) : ?><option value="<?php echo esc_attr( $form['id'] ); ?>" <?php selected( $form_id, $form['id'] ); ?>><?php echo esc_html( $form['name'] ); ?></option><?php endforeach; ?></select>
 		<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Nome, e-mail ou conteúdo"> <?php submit_button( 'Filtrar', 'secondary', '', false ); ?></form>
 		<table class="widefat striped" style="margin-top:16px"><thead><tr><th>ID</th><th>Data</th><th>Formulário</th><th>Nome</th><th>E-mail</th><th>Integrações</th><th>Ações</th></tr></thead><tbody>
 		<?php if ( empty( $result['items'] ) ) : ?><tr><td colspan="7">Nenhum envio registrado.</td></tr><?php endif; ?>
-		<?php foreach ( $result['items'] as $item ) : $item_deliveries = isset( $delivery_map[ (int) $item->id ] ) ? $delivery_map[ (int) $item->id ] : array(); ?><tr><td><?php echo (int) $item->id; ?></td><td><?php echo esc_html( get_date_from_gmt( $item->created_at, 'd/m/Y H:i' ) ); ?></td><td><?php echo esc_html( $item->form_name ); ?></td><td><?php echo esc_html( $item->primary_name ); ?></td><td><a href="mailto:<?php echo esc_attr( $item->primary_email ); ?>"><?php echo esc_html( $item->primary_email ); ?></a></td><td><?php $this->delivery_badges( $item, $item_deliveries ); ?></td><td><a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&view=' . (int) $item->id ) ); ?>">Detalhes</a></td></tr><?php endforeach; ?>
+		<?php foreach ( $result['items'] as $item ) : $item_deliveries = isset( $delivery_map[ (int) $item->id ] ) ? $delivery_map[ (int) $item->id ] : array(); ?><tr><td><?php echo (int) $item->id; ?></td><td><?php echo esc_html( get_date_from_gmt( $item->created_at, 'd/m/Y H:i' ) ); ?></td><td><?php echo esc_html( $item->form_name ); ?></td><td><?php echo esc_html( $item->primary_name ); ?></td><td><a href="mailto:<?php echo esc_attr( $item->primary_email ); ?>"><?php echo esc_html( $item->primary_email ); ?></a></td><td><?php $this->delivery_badges( $item, $item_deliveries ); ?></td><td><div class="wpfv-row-actions"><a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&view=' . (int) $item->id ) ); ?>">Detalhes</a><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Excluir este envio e todo o histórico local associado?');"><input type="hidden" name="action" value="wpfv_delete_submission"><input type="hidden" name="submission_id" value="<?php echo (int) $item->id; ?>"><?php wp_nonce_field( 'wpfv_delete_submission_' . (int) $item->id ); ?><button type="submit" class="button button-small button-link-delete">Excluir</button></form></div></td></tr><?php endforeach; ?>
 		</tbody></table>
 		<?php $pages = (int) ceil( $result['total'] / $result['per_page'] ); if ( $pages > 1 ) { echo wp_kses_post( paginate_links( array( 'total' => $pages, 'current' => $page ) ) ); } ?>
 		</div><?php
@@ -91,7 +98,7 @@ class WPFV_Admin {
 		foreach ( $deliveries as $integration => $delivery ) {
 			$status = in_array( $delivery->status, array( 'success', 'error', 'pending' ), true ) ? $delivery->status : 'pending';
 			$icon   = 'success' === $status ? '✓' : ( 'error' === $status ? '✕' : '…' );
-			$label  = ucfirst( $integration );
+			$label  = $this->integration_label( $integration );
 			if ( $delivery->response_code ) {
 				$label .= ' HTTP ' . (int) $delivery->response_code;
 			}
@@ -131,6 +138,15 @@ class WPFV_Admin {
 			? admin_url( 'admin.php?page=wpfv-submissions&view=' . $submission_id . '&retried=' . rawurlencode( $integration ) )
 			: admin_url( 'admin.php?page=wpfv-submissions&retried=1' );
 		wp_safe_redirect( $redirect_url );
+		exit;
+	}
+
+	public function delete_submission() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) ); }
+		$id = isset( $_POST['submission_id'] ) ? absint( $_POST['submission_id'] ) : 0;
+		check_admin_referer( 'wpfv_delete_submission_' . $id );
+		if ( ! $this->repository->delete( $id ) ) { wp_die( esc_html__( 'Não foi possível excluir o envio.', 'wp-formvault' ) ); }
+		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-submissions&deleted=1' ) );
 		exit;
 	}
 
@@ -242,6 +258,11 @@ class WPFV_Admin {
 		return wp_nonce_url( $url, 'wpfv_retry_' . absint( $submission_id ) . '_' . sanitize_key( $integration ) );
 	}
 
+	private function integration_label( $integration ) {
+		$integration = sanitize_key( $integration );
+		return 'rdcrm' === $integration ? 'RD CRM' : ucfirst( $integration );
+	}
+
 	private function status_label( $status ) {
 		return 'success' === $status ? 'Sucesso' : ( 'error' === $status ? 'Erro' : 'Pendente' );
 	}
@@ -252,7 +273,7 @@ class WPFV_Admin {
 		$button_text = 'webhook' === $integration ? 'Reenviar webhook' : 'Tentar novamente';
 		?>
 		<div class="wpfv-delivery-item">
-			<div><strong><?php echo esc_html( ucfirst( $integration ) ); ?></strong><span class="wpfv-badge wpfv-badge--<?php echo esc_attr( $status ); ?>"><?php echo esc_html( $this->status_label( $status ) ); ?><?php echo $delivery->response_code ? ' · HTTP ' . (int) $delivery->response_code : ''; ?></span></div>
+			<div><strong><?php echo esc_html( $this->integration_label( $integration ) ); ?></strong><span class="wpfv-badge wpfv-badge--<?php echo esc_attr( $status ); ?>"><?php echo esc_html( $this->status_label( $status ) ); ?><?php echo $delivery->response_code ? ' · HTTP ' . (int) $delivery->response_code : ''; ?></span></div>
 			<p>Última tentativa: <?php echo esc_html( get_date_from_gmt( $delivery->updated_at, 'd/m/Y H:i:s' ) ); ?></p>
 			<?php if ( $this->has_value( $delivery->error_message ) ) : ?><p class="wpfv-delivery-error"><?php echo esc_html( $delivery->error_message ); ?></p><?php endif; ?>
 			<?php if ( $can_resend ) : ?><a class="button button-secondary" href="<?php echo esc_url( $this->retry_url( $submission->id, $integration, true ) ); ?>"><span class="dashicons dashicons-update" aria-hidden="true"></span><?php echo esc_html( $button_text ); ?></a><?php endif; ?>
@@ -276,12 +297,14 @@ class WPFV_Admin {
 		$global_settings      = WPFV_Settings::get_global();
 		$pipedrive_configured = ! empty( $global_settings['pipedrive_domain'] ) && ! empty( $global_settings['pipedrive_token'] );
 		$brevo_configured     = ! empty( $global_settings['brevo_api_key'] );
+		$rdcrm_configured     = ( new WPFV_RDCRM_API() )->connected();
 		?>
 		<div class="wrap wpfv-admin-wrap">
 			<p><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-forms' ) ); ?>">&larr; Voltar aos formulários</a></p>
 			<h1><?php echo esc_html( $form['name'] ); ?></h1>
 			<p class="wpfv-page-description">Configure a captação, os destinos e as regras de validação deste formulário.</p>
 			<?php if ( isset( $_GET['updated'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Configurações salvas.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['rdcrm_invalid'] ) ) : ?><div class="notice notice-error"><p>Revise o RD CRM: nome, e-mail, funil, etapa e responsável são obrigatórios.</p></div><?php endif; ?>
 			<nav class="nav-tab-wrapper" aria-label="Seções de configuração">
 				<a href="#wpfv-general" class="nav-tab nav-tab-active wpfv-nav-tab">Geral</a>
 				<a href="#wpfv-webhook" class="nav-tab wpfv-nav-tab">Webhook</a>
@@ -291,6 +314,7 @@ class WPFV_Admin {
 				<?php if ( $brevo_configured ) : ?>
 					<a href="#wpfv-brevo" class="nav-tab wpfv-nav-tab">Brevo</a>
 				<?php endif; ?>
+				<?php if ( $rdcrm_configured ) : ?><a href="#wpfv-rdcrm" class="nav-tab wpfv-nav-tab">RD CRM</a><?php endif; ?>
 				<a href="#wpfv-validation" class="nav-tab wpfv-nav-tab">Validações</a>
 			</nav>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -312,6 +336,16 @@ class WPFV_Admin {
 				<section id="wpfv-pipedrive" class="wpfv-tab-panel" hidden>
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Negociação no Pipedrive</h2><p>Crie organização, pessoa e negócio a partir do contato.</p></div><div class="wpfv-card-body"><p><label><input type="checkbox" name="pipedrive_enabled" value="1" <?php checked( $settings['pipedrive_enabled'] ); ?>> Habilitar integração com o Pipedrive</label></p><div class="wpfv-inline-fields"><label for="wpfv-pipeline">Pipeline</label><select id="wpfv-pipeline" class="regular-text" name="pipedrive_pipeline_id" data-selected="<?php echo absint( $settings['pipedrive_pipeline_id'] ); ?>"><option value="<?php echo absint( $settings['pipedrive_pipeline_id'] ); ?>">— Carregando pipelines —</option></select><label for="wpfv-stage">Etapa</label><select id="wpfv-stage" class="regular-text" name="pipedrive_stage_id" data-selected="<?php echo absint( $settings['pipedrive_stage_id'] ); ?>"><option value="<?php echo absint( $settings['pipedrive_stage_id'] ); ?>">— Selecione o pipeline —</option></select></div><p class="wpfv-connection-status" id="wpfv-pipedrive-catalog-status"></p><p><label for="wpfv-deal-title"><strong>Título da negociação</strong></label><br><input id="wpfv-deal-title" class="large-text" type="text" name="pipedrive_deal_title" value="<?php echo esc_attr( $settings['pipedrive_deal_title'] ); ?>"></p></div></div>
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do Pipedrive</h2><p>Associe os campos recebidos às propriedades de cada entidade.</p></div><div class="wpfv-card-body"><?php $this->pipedrive_rows( $settings['pipedrive_field_map'], $form ); ?><p class="description">Os campos são carregados automaticamente após configurar e testar a conexão.</p></div></div>
+				</section>
+				<?php endif; ?>
+
+				<?php if ( $rdcrm_configured ) : ?>
+				<section id="wpfv-rdcrm" class="wpfv-tab-panel" hidden>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Negociação no RD CRM</h2><p>Crie ou atualize o contato e abra uma negociação associada.</p></div><div class="wpfv-card-body">
+						<p><label><input type="checkbox" name="rdcrm_enabled" value="1" <?php checked($settings['rdcrm_enabled']); ?>> Habilitar integração com o RD CRM</label></p>
+						<div class="wpfv-inline-fields"><label>Funil <select id="wpfv-rdcrm-pipeline" name="rdcrm_pipeline_id" data-selected="<?php echo esc_attr($settings['rdcrm_pipeline_id']); ?>"><option value="">— Carregando —</option></select></label><label>Etapa <select id="wpfv-rdcrm-stage" name="rdcrm_stage_id" data-selected="<?php echo esc_attr($settings['rdcrm_stage_id']); ?>"><option value="">— Selecione o funil —</option></select></label><label>Responsável <select id="wpfv-rdcrm-owner" name="rdcrm_owner_id" data-selected="<?php echo esc_attr($settings['rdcrm_owner_id']); ?>"><option value="">— Carregando —</option></select></label></div>
+						<p id="wpfv-rdcrm-catalog-status" class="wpfv-connection-status" role="status"></p><p><label for="wpfv-rdcrm-deal-title"><strong>Título da negociação</strong></label><br><input id="wpfv-rdcrm-deal-title" class="large-text" type="text" name="rdcrm_deal_title" value="<?php echo esc_attr($settings['rdcrm_deal_title']); ?>"></p>
+					</div></div><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do RD CRM</h2><p>Nome e e-mail são obrigatórios. Campos personalizados usam o destino <code>custom:ID_DO_CAMPO</code>.</p></div><div class="wpfv-card-body"><?php $this->rdcrm_rows($settings['rdcrm_field_map'],$form); ?></div></div>
 				</section>
 				<?php endif; ?>
 
@@ -366,6 +400,8 @@ class WPFV_Admin {
 		echo '<td class="wpfv-mapping-actions"><button type="button" class="button-link-delete wpfv-remove-mapping" aria-label="Remover este mapeamento">Remover</button></td>';
 	}
 	private function pipedrive_rows( $rows, $form ) { $rows = $rows ? $rows : array(); echo '<table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário</th><th>Entidade</th><th>Campo no Pipedrive</th></tr></thead><tbody>'; $total=max( 6, count( $rows )+3 ); for($i=0;$i<$total;$i++){ $r=isset($rows[$i])?$rows[$i]:array(); echo '<tr><td><select name="pd_source[]"><option value="">— Selecione —</option>'; $this->field_options($form,isset($r['source'])?$r['source']:''); echo '</select></td><td><select name="pd_entity[]" class="wpfv-pd-entity"><option value="person" '.selected(isset($r['entity'])?$r['entity']:'person','person',false).'>Pessoa</option><option value="organization" '.selected(isset($r['entity'])?$r['entity']:'','organization',false).'>Empresa</option><option value="deal" '.selected(isset($r['entity'])?$r['entity']:'','deal',false).'>Negociação</option></select></td><td><select class="regular-text wpfv-pd-target" name="pd_target[]" data-selected="'.esc_attr(isset($r['target'])?$r['target']:'').'"><option value="'.esc_attr(isset($r['target'])?$r['target']:'').'">— Carregando campos —</option></select></td></tr>'; } echo '</tbody></table>'; }
+	private function rdcrm_rows($rows,$form){$rows=$rows?$rows:array(array());echo '<div class="wpfv-rd-mapping"><table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário</th><th>Entidade</th><th>Destino no RD CRM</th><th>Ações</th></tr></thead><tbody>';foreach($rows as $r){echo '<tr>';$this->rdcrm_cells($r,$form);echo '</tr>';}echo '</tbody></table><p><button type="button" class="button wpfv-add-rd-mapping">Adicionar campo</button></p><template class="wpfv-rd-template"><tr>';$this->rdcrm_cells(array(),$form);echo '</tr></template></div>';}
+	private function rdcrm_cells($r,$form){echo '<td><select name="rd_source[]" class="wpfv-rd-source"><option value="">— Selecione —</option>';$this->field_options($form,isset($r['source'])?$r['source']:'');echo '</select></td><td><select name="rd_entity[]" class="wpfv-rd-entity"><option value="contact" '.selected(isset($r['entity'])?$r['entity']:'contact','contact',false).'>Contato</option><option value="deal" '.selected(isset($r['entity'])?$r['entity']:'','deal',false).'>Negociação</option></select></td><td><select class="regular-text wpfv-rd-target" name="rd_target[]" data-selected="'.esc_attr(isset($r['target'])?$r['target']:'').'"><option value="'.esc_attr(isset($r['target'])?$r['target']:'').'">— Carregando campos —</option></select></td><td><button type="button" class="button-link-delete wpfv-remove-rd-mapping">Remover</button></td>';}
 	private function validation_textarea( $name, $label, $validation ) { $id = 'wpfv-' . sanitize_html_class( str_replace( '_', '-', $name ) ); echo '<p><label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label><br><textarea id="' . esc_attr( $id ) . '" class="large-text code" rows="5" name="' . esc_attr( $name ) . '">' . esc_textarea( implode( "\n", (array) $validation[$name] ) ) . '</textarea></p>'; }
 
 	public function settings_page() {
@@ -377,10 +413,13 @@ class WPFV_Admin {
 			<h1>Configurações de Contatos</h1>
 			<p class="wpfv-page-description">Conecte os serviços externos e defina como os eventos técnicos serão registrados.</p>
 			<?php if ( isset( $_GET['updated'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Configurações salvas.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['rdcrm'] ) ) : ?><div class="notice notice-<?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'success':'warning'; ?> is-dismissible"><p><?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'RD CRM conectado com sucesso.':'Estado da conexão do RD CRM atualizado.'; ?></p></div><?php endif; ?>
+			<nav class="nav-tab-wrapper" aria-label="Seções de configuração"><a href="#wpfv-settings-logs" class="nav-tab nav-tab-active wpfv-nav-tab">Logs</a><a href="#wpfv-settings-integrations" class="nav-tab wpfv-nav-tab">Integrações</a></nav>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'wpfv_save_global' ); ?>
 				<input type="hidden" name="action" value="wpfv_save_global_settings">
-				<div class="wpfv-settings-grid">
+				<section id="wpfv-settings-logs" class="wpfv-tab-panel"><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Logs</h2><p>Defina por quanto tempo os eventos das integrações serão mantidos.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Registro</th><td><label><input type="checkbox" name="logging_enabled" value="1" <?php checked( $s['logging_enabled'] ); ?>> Registrar eventos das integrações</label></td></tr><tr><th scope="row"><label for="wpfv-retention">Retenção</label></th><td><input id="wpfv-retention" class="small-text" type="number" min="1" max="3650" name="log_retention_days" value="<?php echo absint( $s['log_retention_days'] ); ?>"> dias</td></tr></table></div></div></section>
+				<section id="wpfv-settings-integrations" class="wpfv-tab-panel" hidden><div class="wpfv-settings-stack">
 					<div class="card wpfv-admin-card">
 						<div class="wpfv-card-header"><h2>Pipedrive</h2><p>Credenciais usadas para consultar campos e criar negociações.</p></div>
 						<div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row"><label for="wpfv-pipedrive-domain">Company Domain</label></th><td><input id="wpfv-pipedrive-domain" class="large-text" type="text" name="pipedrive_domain" value="<?php echo esc_attr( $s['pipedrive_domain'] ); ?>" placeholder="empresa.pipedrive.com" autocomplete="url" inputmode="url"><p class="description">Informe somente o domínio da conta, sem protocolo.</p></td></tr><tr><th scope="row"><label for="wpfv-pipedrive-token">API Token</label></th><td><input id="wpfv-pipedrive-token" class="large-text" type="password" name="pipedrive_token" value="" placeholder="<?php echo $s['pipedrive_token'] ? 'Token configurado — deixe vazio para manter' : ''; ?>" autocomplete="new-password"><p><button type="button" class="button button-secondary wpfv-test" data-action="wpfv_test_pipedrive">Testar conexão</button> <span class="wpfv-test-result wpfv-connection-status" role="status"></span></p></td></tr></table></div>
@@ -389,11 +428,10 @@ class WPFV_Admin {
 						<div class="wpfv-card-header"><h2>Brevo</h2><p>Credencial usada para criar e atualizar contatos.</p></div>
 						<div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row"><label for="wpfv-brevo-key">API Key</label></th><td><input id="wpfv-brevo-key" class="large-text" type="password" name="brevo_api_key" value="" placeholder="<?php echo $s['brevo_api_key'] ? 'Chave configurada — deixe vazio para manter' : ''; ?>" autocomplete="new-password"><p><button type="button" class="button button-secondary wpfv-test" data-action="wpfv_test_brevo">Testar conexão</button> <span class="wpfv-test-result wpfv-connection-status" role="status"></span></p></td></tr></table></div>
 					</div>
+					<div class="notice notice-info inline wpfv-rdcrm-help"><p><strong>Como obter as credenciais do RD CRM</strong></p><ol><li>Acesse o App Publisher da RD Station e clique em <strong>Quero criar um aplicativo</strong>.</li><li>Crie um aplicativo privado e selecione o produto <strong>RD Station CRM</strong>.</li><li>Cadastre exatamente a callback mostrada no card abaixo. Em produção, ela precisa usar HTTPS.</li><li>Salve e copie o <strong>client_id</strong> e o <strong>client_secret</strong> gerados.</li></ol><p><a href="https://developers.rdstation.com/reference/crm-v2-authentication-step-1" target="_blank" rel="noopener noreferrer">Abrir instruções oficiais da RD Station <span class="screen-reader-text">(abre em nova aba)</span></a></p></div>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>RD CRM</h2><p>OAuth2 para criar contatos e negociações pela API v2.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row"><label for="wpfv-rd-client">Client ID</label></th><td><input id="wpfv-rd-client" class="large-text" type="text" name="rdcrm_client_id" value="<?php echo esc_attr($s['rdcrm_client_id']); ?>" autocomplete="off"></td></tr><tr><th scope="row"><label for="wpfv-rd-secret">Client Secret</label></th><td><input id="wpfv-rd-secret" class="large-text" type="password" name="rdcrm_client_secret" autocomplete="new-password" placeholder="<?php echo $s['rdcrm_client_secret']?'Secret configurado — deixe vazio para manter':''; ?>"></td></tr><tr><th scope="row"><label for="wpfv-rd-callback">Callback</label></th><td><input id="wpfv-rd-callback" class="large-text" type="text" readonly="readonly" aria-readonly="true" value="<?php echo esc_attr(WPFV_RDCRM_API::callback_url()); ?>"><p class="description">Copie exatamente esta URL para o aplicativo no App Publisher da RD Station.</p></td></tr><tr><th scope="row">Estado</th><td><strong><?php echo (new WPFV_RDCRM_API())->connected()?'Conectado':'Desconectado'; ?></strong><p><?php if((new WPFV_RDCRM_API())->configured()): ?><a class="button button-primary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=wpfv_rdcrm_connect'),'wpfv_rdcrm_connect')); ?>">Conectar</a> <?php endif; ?><button type="button" class="button wpfv-test" data-action="wpfv_test_rdcrm">Testar conexão</button> <span class="wpfv-test-result wpfv-connection-status" role="status"></span><?php if((new WPFV_RDCRM_API())->connected()): ?> <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=wpfv_rdcrm_disconnect'),'wpfv_rdcrm_disconnect')); ?>">Desconectar</a><?php endif; ?></p><p class="description">Salve Client ID e Client Secret antes de conectar. Secrets e tokens salvos nunca são exibidos.</p></td></tr></table></div></div>
 				</div>
-				<div class="card wpfv-admin-card">
-					<div class="wpfv-card-header"><h2>Logs</h2><p>Defina por quanto tempo os eventos das integrações serão mantidos.</p></div>
-					<div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Registro</th><td><label><input type="checkbox" name="logging_enabled" value="1" <?php checked( $s['logging_enabled'] ); ?>> Registrar eventos das integrações</label></td></tr><tr><th scope="row"><label for="wpfv-retention">Retenção</label></th><td><input id="wpfv-retention" class="small-text" type="number" min="1" max="3650" name="log_retention_days" value="<?php echo absint( $s['log_retention_days'] ); ?>"> dias</td></tr></table></div>
-				</div>
+				</section>
 				<div class="wpfv-actions"><?php submit_button( 'Salvar configurações', 'primary', 'submit', false ); ?></div>
 			</form>
 		</div>
@@ -408,21 +446,33 @@ class WPFV_Admin {
 		$current = WPFV_Settings::get_global();
 		$token   = isset( $_POST['pipedrive_token'] ) ? sanitize_text_field( wp_unslash( $_POST['pipedrive_token'] ) ) : '';
 		$brevo   = isset( $_POST['brevo_api_key'] ) ? sanitize_text_field( wp_unslash( $_POST['brevo_api_key'] ) ) : '';
+		$rd_secret = isset($_POST['rdcrm_client_secret']) ? sanitize_text_field(wp_unslash($_POST['rdcrm_client_secret'])) : '';
+		$rd_client = isset($_POST['rdcrm_client_id']) ? sanitize_text_field(wp_unslash($_POST['rdcrm_client_id'])) : '';
+		$credentials_changed = $rd_client !== $current['rdcrm_client_id'] || (''!==$rd_secret && $rd_secret!==$current['rdcrm_client_secret']);
 
 		WPFV_Settings::save_global(
 			array(
 				'pipedrive_domain'  => isset( $_POST['pipedrive_domain'] ) ? sanitize_text_field( wp_unslash( $_POST['pipedrive_domain'] ) ) : '',
 				'pipedrive_token'   => '' !== $token ? $token : $current['pipedrive_token'],
 				'brevo_api_key'      => '' !== $brevo ? $brevo : $current['brevo_api_key'],
+				'rdcrm_client_id' => $rd_client,
+				'rdcrm_client_secret' => ''!==$rd_secret?$rd_secret:$current['rdcrm_client_secret'],
+				'rdcrm_access_token' => $credentials_changed?'':$current['rdcrm_access_token'],
+				'rdcrm_refresh_token' => $credentials_changed?'':$current['rdcrm_refresh_token'],
+				'rdcrm_token_expires_at' => $credentials_changed?0:$current['rdcrm_token_expires_at'],
 				'logging_enabled'    => ! empty( $_POST['logging_enabled'] ),
 				'log_retention_days' => isset( $_POST['log_retention_days'] ) ? absint( $_POST['log_retention_days'] ) : 90,
 			)
 		);
-		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-settings&updated=1' ) );
+		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-settings&updated=1#wpfv-settings-integrations' ) );
 		exit;
 	}
 	public function test_pipedrive(){check_ajax_referer('wpfv_api_test');if(!current_user_can('manage_options')){wp_send_json_error();}$r=(new WPFV_Pipedrive_API())->test();$msg=$r['success']?'Conexão válida com o Pipedrive.':$r['error'];if($r['success']){wp_send_json_success(array('message'=>$msg));}wp_send_json_error(array('message'=>$msg));}
 	public function test_brevo(){check_ajax_referer('wpfv_api_test');if(!current_user_can('manage_options')){wp_send_json_error();}$r=(new WPFV_Brevo_API())->test();$msg=$r['success']?'Conexão válida com o Brevo.':$r['error'];if($r['success']){wp_send_json_success(array('message'=>$msg));}wp_send_json_error(array('message'=>$msg));}
+	public function test_rdcrm(){check_ajax_referer('wpfv_api_test');if(!current_user_can('manage_options'))wp_send_json_error();$r=(new WPFV_RDCRM_API())->test();$m=!empty($r['success'])?'Conexão válida com o RD CRM.':$r['error'];!empty($r['success'])?wp_send_json_success(array('message'=>$m)):wp_send_json_error(array('message'=>$m));}
+	public function rdcrm_connect(){if(!current_user_can('manage_options'))wp_die('Acesso negado.');check_admin_referer('wpfv_rdcrm_connect');$api=new WPFV_RDCRM_API();if(!$api->configured())wp_die('Salve as credenciais antes de conectar.');$state=wp_generate_password(48,false,false);set_transient('wpfv_rdcrm_state_'.get_current_user_id(),$state,10*MINUTE_IN_SECONDS);wp_redirect($api->authorization_url($state));exit;}
+	public function rdcrm_oauth_callback(){if(!current_user_can('manage_options'))wp_die('Acesso negado.');$state=isset($_GET['state'])?sanitize_text_field(wp_unslash($_GET['state'])):'';$saved=get_transient('wpfv_rdcrm_state_'.get_current_user_id());delete_transient('wpfv_rdcrm_state_'.get_current_user_id());if(!$saved||!hash_equals($saved,$state))wp_die('Estado OAuth inválido.');$code=isset($_GET['code'])?sanitize_text_field(wp_unslash($_GET['code'])):'';$r=(new WPFV_RDCRM_API())->exchange_code($code);wp_safe_redirect(admin_url('admin.php?page=wpfv-settings&rdcrm='.(!empty($r['success'])?'connected':'error').'#wpfv-settings-integrations'));exit;}
+	public function rdcrm_disconnect(){if(!current_user_can('manage_options'))wp_die('Acesso negado.');check_admin_referer('wpfv_rdcrm_disconnect');(new WPFV_RDCRM_API())->disconnect();wp_safe_redirect(admin_url('admin.php?page=wpfv-settings&rdcrm=disconnected#wpfv-settings-integrations'));exit;}
 
 	/**
 	 * Return Pipedrive pipelines, stages or fields to the form settings UI.
@@ -456,6 +506,7 @@ class WPFV_Admin {
 
 		wp_send_json_error( array( 'message' => isset( $result['error'] ) ? $result['error'] : __( 'Não foi possível consultar o Pipedrive.', 'wp-formvault' ) ) );
 	}
+	public function rdcrm_catalog(){check_ajax_referer('wpfv_admin');if(!current_user_can('manage_options'))wp_send_json_error(array('message'=>'Acesso negado.'),403);$c=isset($_POST['catalog'])?sanitize_key(wp_unslash($_POST['catalog'])):'';$api=new WPFV_RDCRM_API();$e='';if('pipelines'===$c)$r=$api->pipelines();elseif('stages'===$c){$id=isset($_POST['pipeline_id'])?sanitize_text_field(wp_unslash($_POST['pipeline_id'])):'';$r=$api->stages($id);}elseif('users'===$c)$r=$api->users();elseif('fields'===$c){$e=isset($_POST['entity'])?sanitize_key(wp_unslash($_POST['entity'])):'';$r=$api->custom_fields($e);}else $r=array('success'=>false,'error'=>'Catálogo inválido.');if(empty($r['success']))wp_send_json_error(array('message'=>$r['error']));$raw=isset($r['data']['data'])?$r['data']['data']:array();$items=array();if('fields'===$c&&'contact'===$e)$items=array(array('value'=>'name','label'=>'Nome'),array('value'=>'email','label'=>'E-mail'),array('value'=>'phone','label'=>'Telefone'),array('value'=>'job_title','label'=>'Cargo'));foreach((array)$raw as $item){if(!is_array($item))continue;$id=isset($item['id'])?(string)$item['id']:'';$slug=isset($item['slug'])?(string)$item['slug']:$id;$label=isset($item['name'])?$item['name']:(isset($item['label'])?$item['label']:$slug);if($id)$items[]=array('value'=>'fields'===$c?'custom:'.$slug:$id,'legacy_value'=>'fields'===$c?'custom:'.$id:$id,'label'=>$label);}wp_send_json_success(array('items'=>$items));}
 	public function logs_page() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
@@ -465,7 +516,7 @@ class WPFV_Admin {
 		<div class="wrap">
 			<h1><?php esc_html_e( 'Logs', 'wp-formvault' ); ?></h1>
 			<p><a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wpfv_clear_logs' ), 'wpfv_clear_logs' ) ); ?>"><?php esc_html_e( 'Limpar logs', 'wp-formvault' ); ?></a></p>
-			<table class="widefat striped">
+			<table class="widefat striped wpfv-logs-table">
 				<thead><tr><th>Data</th><th>Nível</th><th>Origem</th><th>Contato</th><th>Mensagem</th><th>Contexto</th></tr></thead>
 				<tbody>
 				<?php if ( ! $logs ) : ?>
@@ -478,7 +529,7 @@ class WPFV_Admin {
 						<td><?php echo esc_html( $log->source ); ?></td>
 						<td><?php if ( $log->submission_id ) : ?><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&view=' . (int) $log->submission_id ) ); ?>">#<?php echo (int) $log->submission_id; ?></a><?php else : ?>—<?php endif; ?></td>
 						<td><?php echo esc_html( $log->message ); ?></td>
-						<td><details><summary>Ver</summary><pre><?php echo esc_html( $log->context ); ?></pre></details></td>
+						<td class="wpfv-log-context"><details><summary>Ver JSON</summary><pre><?php echo esc_html( $this->pretty_json( $log->context ) ); ?></pre></details></td>
 					</tr>
 				<?php endforeach; ?>
 				</tbody>
@@ -486,6 +537,7 @@ class WPFV_Admin {
 		</div>
 		<?php
 	}
+	private function pretty_json( $context ) { $decoded=json_decode((string)$context,true); return JSON_ERROR_NONE===json_last_error()?wp_json_encode($decoded,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES):(string)$context; }
 	public function clear_logs(){if(!current_user_can('manage_options'))wp_die('Acesso negado.');check_admin_referer('wpfv_clear_logs');$this->repository->clear_logs();wp_safe_redirect(admin_url('admin.php?page=wpfv-logs'));exit;}
 
 	public function save_form_settings() {
@@ -499,7 +551,9 @@ class WPFV_Admin {
 		$global_settings  = WPFV_Settings::get_global();
 		$has_pipedrive    = ! empty( $global_settings['pipedrive_domain'] ) && ! empty( $global_settings['pipedrive_token'] );
 		$has_brevo        = ! empty( $global_settings['brevo_api_key'] );
+		$has_rdcrm        = ( new WPFV_RDCRM_API() )->connected();
 		$webhook_secret   = isset( $_POST['webhook_secret'] ) ? sanitize_text_field( wp_unslash( $_POST['webhook_secret'] ) ) : '';
+		$rd_map           = $has_rdcrm ? $this->sanitize_rd_map() : $current_settings['rdcrm_field_map'];
 		if ( '' === $webhook_secret ) {
 			$webhook_secret = $current_settings['webhook_secret'];
 		}
@@ -523,11 +577,18 @@ class WPFV_Admin {
 				'brevo_enabled'=> $has_brevo ? ! empty($_POST['brevo_enabled']) : $current_settings['brevo_enabled'],
 				'brevo_list_id'=> $has_brevo && isset($_POST['brevo_list_id']) ? absint($_POST['brevo_list_id']) : $current_settings['brevo_list_id'],
 				'brevo_field_map'=> $has_brevo ? $this->sanitize_map('brevo_source','brevo_target') : $current_settings['brevo_field_map'],
+				'rdcrm_enabled'=> $has_rdcrm ? !empty($_POST['rdcrm_enabled']) : $current_settings['rdcrm_enabled'],
+				'rdcrm_pipeline_id'=> $has_rdcrm&&isset($_POST['rdcrm_pipeline_id'])?sanitize_text_field(wp_unslash($_POST['rdcrm_pipeline_id'])):$current_settings['rdcrm_pipeline_id'],
+				'rdcrm_stage_id'=> $has_rdcrm&&isset($_POST['rdcrm_stage_id'])?sanitize_text_field(wp_unslash($_POST['rdcrm_stage_id'])):$current_settings['rdcrm_stage_id'],
+				'rdcrm_owner_id'=> $has_rdcrm&&isset($_POST['rdcrm_owner_id'])?sanitize_text_field(wp_unslash($_POST['rdcrm_owner_id'])):$current_settings['rdcrm_owner_id'],
+				'rdcrm_deal_title'=> $has_rdcrm&&isset($_POST['rdcrm_deal_title'])?sanitize_text_field(wp_unslash($_POST['rdcrm_deal_title'])):$current_settings['rdcrm_deal_title'],
+				'rdcrm_field_map'=> $rd_map,
 				'validation'=> $this->sanitize_validation(),
 			)
 		);
 
-		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-forms&form_id=' . $form_id . '&updated=1' ) );
+		$rd_targets=array();foreach($rd_map as $row){if('contact'===$row['entity'])$rd_targets[]=$row['target'];}$rd_invalid=$has_rdcrm&&!empty($_POST['rdcrm_enabled'])&&(!in_array('name',$rd_targets,true)||!in_array('email',$rd_targets,true)||empty($_POST['rdcrm_pipeline_id'])||empty($_POST['rdcrm_stage_id'])||empty($_POST['rdcrm_owner_id']));
+		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-forms&form_id=' . $form_id . '&updated=1'.($rd_invalid?'&rdcrm_invalid=1#wpfv-rdcrm':'')) );
 		exit;
 	}
 
@@ -581,5 +642,6 @@ class WPFV_Admin {
 		return $out;
 	}
 	private function sanitize_pd_map(){ $sources=isset($_POST['pd_source'])?(array)wp_unslash($_POST['pd_source']):array();$entities=isset($_POST['pd_entity'])?(array)wp_unslash($_POST['pd_entity']):array();$targets=isset($_POST['pd_target'])?(array)wp_unslash($_POST['pd_target']):array();$out=array();foreach($sources as $i=>$source){$source=sanitize_key($source);$entity=isset($entities[$i])?sanitize_key($entities[$i]):'';$target=isset($targets[$i])?sanitize_text_field($targets[$i]):'';if($source&&in_array($entity,array('person','organization','deal'),true)&&$target){$out[]=array('source'=>$source,'entity'=>$entity,'target'=>$target);}}return $out; }
+	private function sanitize_rd_map(){$s=isset($_POST['rd_source'])?(array)wp_unslash($_POST['rd_source']):array();$e=isset($_POST['rd_entity'])?(array)wp_unslash($_POST['rd_entity']):array();$t=isset($_POST['rd_target'])?(array)wp_unslash($_POST['rd_target']):array();$out=array();$seen=array();foreach($s as $i=>$source){$source=sanitize_key($source);$entity=isset($e[$i])?sanitize_key($e[$i]):'';$target=isset($t[$i])?sanitize_text_field($t[$i]):'';$key=$entity.'|'.$target;if($source&&in_array($entity,array('contact','deal'),true)&&$target&&!isset($seen[$key])){$out[]=array('source'=>$source,'entity'=>$entity,'target'=>$target);$seen[$key]=true;}}return $out;}
 	private function sanitize_validation(){return array('phone_validation'=>!empty($_POST['phone_validation']),'phone_message'=>isset($_POST['phone_message'])?sanitize_text_field(wp_unslash($_POST['phone_message'])):'','email_block_enabled'=>!empty($_POST['email_block_enabled']),'email_block_domains'=>$this->sanitize_lines('email_block_domains'),'email_block_suffixes'=>$this->sanitize_lines('email_block_suffixes'),'email_block_words'=>$this->sanitize_lines('email_block_words'),'email_msg_domains'=>isset($_POST['email_msg_domains'])?sanitize_text_field(wp_unslash($_POST['email_msg_domains'])):'','email_msg_suffixes'=>isset($_POST['email_msg_suffixes'])?sanitize_text_field(wp_unslash($_POST['email_msg_suffixes'])):'','email_msg_words'=>isset($_POST['email_msg_words'])?sanitize_text_field(wp_unslash($_POST['email_msg_words'])):'');}
 }

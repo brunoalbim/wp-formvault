@@ -3,7 +3,7 @@
  * Plugin Name: WP FormVault
  * Plugin URI:  https://github.com/brunoalbim/wp-formvault
  * Description: Captura, valida e armazena formulários criados em código, com notificações por e-mail e webhooks configuráveis.
- * Version:     1.3.0
+ * Version:     1.5.1
  * Author:      Bruno Albim
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPFV_VERSION', '1.3.0' );
+define( 'WPFV_VERSION', '1.5.1' );
 define( 'WPFV_FILE', __FILE__ );
 define( 'WPFV_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPFV_URL', plugin_dir_url( __FILE__ ) );
@@ -29,12 +29,14 @@ require_once WPFV_DIR . 'includes/class-settings.php';
 require_once WPFV_DIR . 'includes/class-field-mapper.php';
 require_once WPFV_DIR . 'includes/class-pipedrive-api.php';
 require_once WPFV_DIR . 'includes/class-brevo-api.php';
+require_once WPFV_DIR . 'includes/class-rdcrm-api.php';
 require_once WPFV_DIR . 'includes/class-submission-repository.php';
 require_once WPFV_DIR . 'includes/integrations/interface-integration.php';
 require_once WPFV_DIR . 'includes/integrations/class-email-integration.php';
 require_once WPFV_DIR . 'includes/integrations/class-webhook-integration.php';
 require_once WPFV_DIR . 'includes/integrations/class-pipedrive-integration.php';
 require_once WPFV_DIR . 'includes/integrations/class-brevo-integration.php';
+require_once WPFV_DIR . 'includes/integrations/class-rdcrm-integration.php';
 require_once WPFV_DIR . 'includes/class-integration-manager.php';
 require_once WPFV_DIR . 'includes/class-submission-handler.php';
 require_once WPFV_DIR . 'includes/class-assets.php';

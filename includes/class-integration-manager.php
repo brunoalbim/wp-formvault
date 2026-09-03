@@ -39,6 +39,7 @@ class WPFV_Integration_Manager {
 		}
 		if ( ! empty( $settings['pipedrive_enabled'] ) ) { $integrations['pipedrive'] = new WPFV_Pipedrive_Integration(); }
 		if ( ! empty( $settings['brevo_enabled'] ) ) { $integrations['brevo'] = new WPFV_Brevo_Integration(); }
+		if ( ! empty( $settings['rdcrm_enabled'] ) ) { $integrations['rdcrm'] = new WPFV_RDCRM_Integration(); }
 		if ( ! empty( $settings['webhook_enabled'] ) && ! empty( $settings['webhook_url'] ) ) {
 			$integrations['webhook'] = new WPFV_Webhook_Integration();
 		}

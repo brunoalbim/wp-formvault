@@ -16,6 +16,8 @@ class WPFV_Settings {
 	public static function global_defaults() {
 		return array(
 			'pipedrive_domain' => '', 'pipedrive_token' => '', 'brevo_api_key' => '',
+			'rdcrm_client_id' => '', 'rdcrm_client_secret' => '', 'rdcrm_access_token' => '',
+			'rdcrm_refresh_token' => '', 'rdcrm_token_expires_at' => 0,
 			'logging_enabled' => true, 'log_retention_days' => 90,
 		);
 	}
@@ -69,6 +71,12 @@ class WPFV_Settings {
 			'brevo_enabled' => false,
 			'brevo_list_id' => 0,
 			'brevo_field_map' => array(),
+			'rdcrm_enabled' => false,
+			'rdcrm_pipeline_id' => '',
+			'rdcrm_stage_id' => '',
+			'rdcrm_owner_id' => '',
+			'rdcrm_deal_title' => 'Lead: {name}',
+			'rdcrm_field_map' => array(),
 			'validation' => self::validation_defaults(),
 		);
 

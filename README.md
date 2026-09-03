@@ -99,3 +99,12 @@ O webhook envia o ID do formulário tanto em `source` quanto em `form.source`. O
 ## Extensão
 
 Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo filtro `wpfv_integrations`.
+
+## RD Station CRM v2
+
+1. Crie um aplicativo no App Publisher da RD Station e cadastre como redirect URI a URL exibida em **Contatos > Configurações > Integrações > RD CRM**.
+2. Salve o Client ID e Client Secret no plugin e clique em **Conectar** para concluir o OAuth2. O secret e os tokens salvos não voltam a ser exibidos.
+3. Em **Contatos > Formulários**, abra a aba **RD CRM**, escolha funil, etapa e responsável, defina o título e mapeie obrigatoriamente nome e e-mail.
+4. Use `name`, `email`, `phone` e `job_title` nos campos padrão de contato. Para campos personalizados de contato ou negociação, use `custom:ID_DO_CAMPO`.
+
+O access token é renovado automaticamente antes da expiração e uma resposta HTTP 401 provoca um único refresh e reenvio. Em cada envio, o plugin busca o contato pelo e-mail exato, atualiza ou cria o contato e abre uma negociação `ongoing` associada. Falhas ficam disponíveis no histórico de entregas para tentativa manual; como a API não fornece idempotência adequada a esse fluxo, uma resposta perdida após uma criação remota pode excepcionalmente causar duplicidade.

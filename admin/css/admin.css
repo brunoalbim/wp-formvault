@@ -136,6 +136,17 @@
 .wpfv-settings-grid .wpfv-admin-card {
 	margin: 0 0 20px;
 }
+.wpfv-settings-stack .wpfv-admin-card { max-width: none; margin: 0 0 20px; }
+.wpfv-settings-stack .wpfv-rdcrm-help { margin: 0 0 20px; padding: 8px 16px; }
+.wpfv-rdcrm-help ol { margin-left: 20px; }
+.wpfv-row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wpfv-row-actions form { margin: 0; }
+.wpfv-row-actions .button-link-delete { color: #b32d2e; border-color: #b32d2e; }
+.wpfv-logs-table { table-layout: fixed; }
+.wpfv-logs-table th:last-child { width: 42%; }
+.wpfv-log-context details { max-width: 100%; }
+.wpfv-log-context summary { cursor: pointer; color: #2271b1; font-weight: 600; }
+.wpfv-log-context pre { overflow: auto; max-width: 100%; max-height: 520px; margin: 10px 0 0; padding: 14px; border: 1px solid #dcdcde; border-radius: 3px; background: #f6f7f7; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; line-height: 1.5; }
 
 .wpfv-validation-grid .wpfv-admin-card {
 	margin: 0;
