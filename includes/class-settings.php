@@ -18,6 +18,7 @@ class WPFV_Settings {
 			'pipedrive_domain' => '', 'pipedrive_token' => '', 'brevo_api_key' => '',
 			'rdcrm_client_id' => '', 'rdcrm_client_secret' => '', 'rdcrm_access_token' => '',
 			'rdcrm_refresh_token' => '', 'rdcrm_token_expires_at' => 0,
+			'recaptcha_project_id' => '', 'recaptcha_site_key' => '', 'recaptcha_api_key' => '',
 			'logging_enabled' => true, 'log_retention_days' => 90,
 		);
 	}
@@ -42,6 +43,13 @@ class WPFV_Settings {
 			'email_msg_domains' => 'E-mails de domínio público não são permitidos. Por favor, use um e-mail corporativo.',
 			'email_msg_suffixes' => 'O domínio do seu e-mail não é permitido. Por favor, use um e-mail corporativo.',
 			'email_msg_words' => 'O endereço de e-mail informado não é válido. Por favor, use um e-mail corporativo.',
+		);
+	}
+
+	public static function antispam_defaults() {
+		return array(
+			'recaptcha_enabled' => false,
+			'score_threshold'   => 0.5,
 		);
 	}
 
@@ -78,6 +86,7 @@ class WPFV_Settings {
 			'rdcrm_deal_title' => 'Lead: {name}',
 			'rdcrm_field_map' => array(),
 			'validation' => self::validation_defaults(),
+			'antispam' => self::antispam_defaults(),
 		);
 
 		if ( ! empty( $form['defaults'] ) ) {
@@ -88,6 +97,7 @@ class WPFV_Settings {
 
 		$settings = array_merge( $defaults, $saved );
 		$settings['validation'] = array_merge( self::validation_defaults(), isset( $saved['validation'] ) && is_array( $saved['validation'] ) ? $saved['validation'] : array() );
+		$settings['antispam'] = array_merge( self::antispam_defaults(), isset( $defaults['antispam'] ) && is_array( $defaults['antispam'] ) ? $defaults['antispam'] : array(), isset( $saved['antispam'] ) && is_array( $saved['antispam'] ) ? $saved['antispam'] : array() );
 		return $settings;
 	}
 

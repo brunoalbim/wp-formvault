@@ -33,6 +33,23 @@ class WPFV_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_post_wpfv_retry_delivery', array( $this, 'retry_delivery' ) );
 		add_action( 'admin_post_wpfv_delete_submission', array( $this, 'delete_submission' ) );
+		add_action( 'admin_post_wpfv_approve_spam', array( $this, 'approve_spam' ) );
+		add_action( 'admin_notices', array( $this, 'recaptcha_health_notice' ) );
+	}
+
+	/** Surface provider failures without exposing credentials or request data. */
+	public function recaptcha_health_notice() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$health = WPFV_Recaptcha::health();
+		$status = isset( $health['status'] ) ? sanitize_key( $health['status'] ) : '';
+		if ( ! in_array( $status, array( 'error', 'warning' ), true ) || empty( $health['message'] ) ) {
+			return;
+		}
+		$class = 'error' === $status ? 'notice-error' : 'notice-warning';
+		$url   = admin_url( 'admin.php?page=wpfv-settings#wpfv-settings-antispam' );
+		echo '<div class="notice ' . esc_attr( $class ) . '"><p><strong>WP FormVault:</strong> ' . esc_html( $health['message'] ) . ' <a href="' . esc_url( $url ) . '">Revisar configuração antispam</a></p></div>';
 	}
 
 	public function enqueue_assets( $hook ) {
@@ -52,8 +69,10 @@ class WPFV_Admin {
 	}
 
 	public function menu() {
-		add_menu_page( 'Contatos', 'Contatos', 'manage_options', 'wpfv-submissions', array( $this, 'submissions_page' ), 'dashicons-email-alt', 58 );
-		add_submenu_page( 'wpfv-submissions', 'Contatos', 'Envios', 'manage_options', 'wpfv-submissions', array( $this, 'submissions_page' ) );
+		$spam_count = $this->repository->count_by_status( 'spam' );
+		$bubble     = $spam_count ? ' <span class="awaiting-mod count-' . absint( $spam_count ) . '"><span class="pending-count">' . absint( $spam_count ) . '</span></span>' : '';
+		add_menu_page( 'Contatos', 'Contatos' . $bubble, 'manage_options', 'wpfv-submissions', array( $this, 'submissions_page' ), 'dashicons-email-alt', 58 );
+		add_submenu_page( 'wpfv-submissions', 'Contatos', 'Envios' . $bubble, 'manage_options', 'wpfv-submissions', array( $this, 'submissions_page' ) );
 		add_submenu_page( 'wpfv-submissions', 'Formulários', 'Formulários', 'manage_options', 'wpfv-forms', array( $this, 'forms_page' ) );
 		add_submenu_page( 'wpfv-submissions', 'Configurações', 'Configurações', 'manage_options', 'wpfv-settings', array( $this, 'settings_page' ) );
 		add_submenu_page( 'wpfv-submissions', 'Logs', 'Logs', 'manage_options', 'wpfv-logs', array( $this, 'logs_page' ) );
@@ -69,27 +88,35 @@ class WPFV_Admin {
 
 		$form_id = isset( $_GET['form_id'] ) ? sanitize_key( wp_unslash( $_GET['form_id'] ) ) : '';
 		$search  = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+		$status  = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '';
+		$status  = in_array( $status, array( 'spam', 'legitimate' ), true ) ? $status : '';
 		$page    = isset( $_GET['paged'] ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
-		$result  = $this->repository->query( array( 'form_id' => $form_id, 'search' => $search, 'page' => $page ) );
+		$result  = $this->repository->query( array( 'form_id' => $form_id, 'search' => $search, 'status' => $status, 'page' => $page ) );
 		$forms   = $this->registry->all();
+		$counts  = array( 'all' => $this->repository->count_by_status(), 'legitimate' => $this->repository->count_by_status( 'legitimate' ), 'spam' => $this->repository->count_by_status( 'spam' ) );
 		$delivery_map = $this->repository->get_latest_deliveries( wp_list_pluck( $result['items'], 'id' ) );
 		?>
 		<div class="wrap"><h1>Contatos</h1>
 		<?php if ( isset( $_GET['retried'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Integração reenviada. O novo status já aparece na listagem.</p></div><?php endif; ?>
 		<?php if ( isset( $_GET['deleted'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Envio excluído com seu histórico local.</p></div><?php endif; ?>
-		<style>.wpfv-badge{display:inline-block;margin:2px 4px 2px 0;padding:4px 9px;border-radius:999px;font-weight:600;white-space:nowrap}.wpfv-badge--success{background:#d8f0df;color:#18743a}.wpfv-badge--error{background:#f8d7da;color:#9c2430}.wpfv-badge--pending{background:#fff0c2;color:#785b00}.wpfv-integration{margin-bottom:5px}.wpfv-retry{margin-left:4px}</style>
-		<form method="get"><input type="hidden" name="page" value="wpfv-submissions">
+		<?php if ( isset( $_GET['approved'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Contato aprovado e liberado para as integrações configuradas.</p></div><?php endif; ?>
+		<ul class="subsubsub"><li><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions' ) ); ?>" <?php echo '' === $status ? 'class="current" aria-current="page"' : ''; ?>>Todos <span class="count">(<?php echo absint( $counts['all'] ); ?>)</span></a> | </li><li><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&status=legitimate' ) ); ?>" <?php echo 'legitimate' === $status ? 'class="current" aria-current="page"' : ''; ?>>Legítimos <span class="count">(<?php echo absint( $counts['legitimate'] ); ?>)</span></a> | </li><li><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&status=spam' ) ); ?>" <?php echo 'spam' === $status ? 'class="current" aria-current="page"' : ''; ?>>Spam <span class="count">(<?php echo absint( $counts['spam'] ); ?>)</span></a></li></ul>
+		<form method="get" class="wpfv-submission-filters"><input type="hidden" name="page" value="wpfv-submissions"><input type="hidden" name="status" value="<?php echo esc_attr( $status ); ?>">
 		<select name="form_id"><option value="">Todos os formulários</option><?php foreach ( $forms as $form ) : ?><option value="<?php echo esc_attr( $form['id'] ); ?>" <?php selected( $form_id, $form['id'] ); ?>><?php echo esc_html( $form['name'] ); ?></option><?php endforeach; ?></select>
 		<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Nome, e-mail ou conteúdo"> <?php submit_button( 'Filtrar', 'secondary', '', false ); ?></form>
-		<table class="widefat striped" style="margin-top:16px"><thead><tr><th>ID</th><th>Data</th><th>Formulário</th><th>Nome</th><th>E-mail</th><th>Integrações</th><th>Ações</th></tr></thead><tbody>
-		<?php if ( empty( $result['items'] ) ) : ?><tr><td colspan="7">Nenhum envio registrado.</td></tr><?php endif; ?>
-		<?php foreach ( $result['items'] as $item ) : $item_deliveries = isset( $delivery_map[ (int) $item->id ] ) ? $delivery_map[ (int) $item->id ] : array(); ?><tr><td><?php echo (int) $item->id; ?></td><td><?php echo esc_html( get_date_from_gmt( $item->created_at, 'd/m/Y H:i' ) ); ?></td><td><?php echo esc_html( $item->form_name ); ?></td><td><?php echo esc_html( $item->primary_name ); ?></td><td><a href="mailto:<?php echo esc_attr( $item->primary_email ); ?>"><?php echo esc_html( $item->primary_email ); ?></a></td><td><?php $this->delivery_badges( $item, $item_deliveries ); ?></td><td><div class="wpfv-row-actions"><a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&view=' . (int) $item->id ) ); ?>">Detalhes</a><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Excluir este envio e todo o histórico local associado?');"><input type="hidden" name="action" value="wpfv_delete_submission"><input type="hidden" name="submission_id" value="<?php echo (int) $item->id; ?>"><?php wp_nonce_field( 'wpfv_delete_submission_' . (int) $item->id ); ?><button type="submit" class="button button-small button-link-delete">Excluir</button></form></div></td></tr><?php endforeach; ?>
+		<table class="widefat striped wpfv-submissions-table"><thead><tr><th>ID</th><th>Data</th><th>Status</th><th>Formulário</th><th>Nome</th><th>E-mail</th><th>Integrações</th><th>Ações</th></tr></thead><tbody>
+		<?php if ( empty( $result['items'] ) ) : ?><tr><td colspan="8">Nenhum envio registrado.</td></tr><?php endif; ?>
+		<?php foreach ( $result['items'] as $item ) : $item_deliveries = isset( $delivery_map[ (int) $item->id ] ) ? $delivery_map[ (int) $item->id ] : array(); ?><tr><td><?php echo (int) $item->id; ?></td><td><?php echo esc_html( get_date_from_gmt( $item->created_at, 'd/m/Y H:i' ) ); ?></td><td><?php $this->submission_status_badge( $item->status ); ?></td><td><?php echo esc_html( $item->form_name ); ?></td><td><?php echo esc_html( $item->primary_name ); ?></td><td><a href="mailto:<?php echo esc_attr( $item->primary_email ); ?>"><?php echo esc_html( $item->primary_email ); ?></a></td><td><?php $this->delivery_badges( $item, $item_deliveries ); ?></td><td><div class="wpfv-row-actions"><a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&view=' . (int) $item->id ) ); ?>">Detalhes</a><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Excluir este envio e todo o histórico local associado?');"><input type="hidden" name="action" value="wpfv_delete_submission"><input type="hidden" name="submission_id" value="<?php echo (int) $item->id; ?>"><?php wp_nonce_field( 'wpfv_delete_submission_' . (int) $item->id ); ?><button type="submit" class="button button-small button-link-delete">Excluir</button></form></div></td></tr><?php endforeach; ?>
 		</tbody></table>
 		<?php $pages = (int) ceil( $result['total'] / $result['per_page'] ); if ( $pages > 1 ) { echo wp_kses_post( paginate_links( array( 'total' => $pages, 'current' => $page ) ) ); } ?>
 		</div><?php
 	}
 
 	private function delivery_badges( $submission, $deliveries ) {
+		if ( 'spam' === $submission->status ) {
+			echo '<span class="wpfv-badge wpfv-badge--spam">Em quarentena</span>';
+			return;
+		}
 		if ( empty( $deliveries ) ) {
 			echo '<span aria-label="Nenhuma integração processada">—</span>';
 			return;
@@ -114,6 +141,12 @@ class WPFV_Admin {
 		}
 	}
 
+	private function submission_status_badge( $status ) {
+		$labels = array( 'stored' => 'Legítimo', 'approved' => 'Aprovado', 'spam' => 'Spam' );
+		$status = isset( $labels[ $status ] ) ? $status : 'stored';
+		echo '<span class="wpfv-badge wpfv-badge--' . esc_attr( $status ) . '">' . esc_html( $labels[ $status ] ) . '</span>';
+	}
+
 	public function retry_delivery() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) );
@@ -125,7 +158,7 @@ class WPFV_Admin {
 
 		$submission = $this->repository->get( $submission_id );
 		$form       = $submission ? $this->registry->get( $submission->form_id ) : null;
-		if ( ! $submission || ! $form || ! $integration ) {
+		if ( ! $submission || ! $form || ! $integration || ! in_array( $submission->status, array( 'stored', 'approved' ), true ) ) {
 			wp_die( esc_html__( 'Não foi possível localizar o contato ou a integração.', 'wp-formvault' ) );
 		}
 
@@ -150,11 +183,36 @@ class WPFV_Admin {
 		exit;
 	}
 
+	public function approve_spam() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) );
+		}
+		$id = isset( $_POST['submission_id'] ) ? absint( $_POST['submission_id'] ) : 0;
+		check_admin_referer( 'wpfv_approve_spam_' . $id );
+		$submission = $this->repository->get( $id );
+		$form       = $submission ? $this->registry->get( $submission->form_id ) : null;
+		if ( ! $submission || ! $form || 'spam' !== $submission->status ) {
+			wp_die( esc_html__( 'Este envio não está disponível para aprovação.', 'wp-formvault' ) );
+		}
+		if ( ! $this->repository->approve_spam( $id ) ) {
+			wp_die( esc_html__( 'O envio já foi revisado por outro administrador.', 'wp-formvault' ) );
+		}
+
+		$fields = json_decode( $submission->fields, true );
+		$fields = is_array( $fields ) ? $fields : array();
+		do_action( 'wpfv_submission_stored', $id, $fields, $form );
+		$this->manager->process( $id, $form );
+		$this->repository->log( 'success', 'antispam', 'Contato aprovado manualmente.', array( 'reviewed_by' => get_current_user_id() ), $id );
+		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-submissions&view=' . $id . '&approved=1' ) );
+		exit;
+	}
+
 	private function submission_detail( $id ) {
 		$item = $this->repository->get( $id );
 		if ( ! $item ) { wp_die( esc_html__( 'Envio não encontrado.', 'wp-formvault' ) ); }
 		$fields      = $this->filled_values( json_decode( $item->fields, true ) );
 		$attribution = $this->filled_values( json_decode( $item->attribution, true ) );
+		$risk_data   = $this->filled_values( json_decode( $item->risk_data, true ) );
 		$deliveries  = $this->repository->get_deliveries( $id );
 		$form         = $this->registry->get( $item->form_id );
 		$submitted_at = get_date_from_gmt( $item->created_at, get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) );
@@ -176,6 +234,10 @@ class WPFV_Admin {
 				<div class="wpfv-detail-date"><span class="dashicons dashicons-calendar-alt" aria-hidden="true"></span><span><strong>Recebido em</strong><?php echo esc_html( $submitted_at ); ?></span></div>
 			</div>
 			<?php if ( isset( $_GET['retried'] ) ) : ?><div class="notice notice-success is-dismissible"><p><?php echo esc_html( ucfirst( sanitize_key( wp_unslash( $_GET['retried'] ) ) ) ); ?> reenviado. O resultado da nova tentativa aparece abaixo.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['approved'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Contato aprovado e enviado às integrações configuradas.</p></div><?php endif; ?>
+			<?php if ( 'spam' === $item->status ) : ?>
+				<div class="notice notice-warning inline wpfv-spam-review"><p><strong>Este contato está em quarentena.</strong> Nenhuma integração foi processada.</p><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Aprovar este contato e enviá-lo às integrações configuradas?');"><input type="hidden" name="action" value="wpfv_approve_spam"><input type="hidden" name="submission_id" value="<?php echo (int) $item->id; ?>"><?php wp_nonce_field( 'wpfv_approve_spam_' . (int) $item->id ); ?><button type="submit" class="button button-primary">Aprovar como legítimo</button></form></div>
+			<?php endif; ?>
 
 			<div class="wpfv-detail-grid">
 				<?php $this->detail_card( 'Campos preenchidos', 'dashicons-feedback', $fields, $form ); ?>
@@ -189,6 +251,7 @@ class WPFV_Admin {
 				$this->detail_card( 'Última atribuição', 'dashicons-update', $last_utm );
 				$this->detail_card( 'Identificadores de anúncios', 'dashicons-megaphone', $ads );
 				$this->detail_card( 'Dados técnicos', 'dashicons-info-outline', $technical );
+				$this->detail_card( 'Análise antispam', 'dashicons-shield', $this->risk_display_values( $risk_data ) );
 				?>
 			</div>
 
@@ -223,6 +286,42 @@ class WPFV_Admin {
 
 	private function extract_values( $values, $keys ) {
 		return array_intersect_key( $values, array_flip( $keys ) );
+	}
+
+	private function risk_display_values( $risk ) {
+		if ( ! is_array( $risk ) || empty( $risk ) ) {
+			return array();
+		}
+		$labels = array(
+			'accepted'               => 'Aceito',
+			'low_score'              => 'Pontuação abaixo do limite',
+			'missing_token'          => 'Token ausente',
+			'invalid_token'          => 'Token inválido ou vencido',
+			'action_mismatch'        => 'Ação inesperada',
+			'hostname_mismatch'      => 'Domínio inesperado',
+			'missing_credentials'    => 'Credenciais incompletas',
+			'provider_configuration' => 'Erro de configuração do Google',
+			'provider_unavailable'   => 'Google temporariamente indisponível',
+			'network_error'          => 'Falha de rede com o Google',
+			'not_enabled'            => 'reCAPTCHA não habilitado',
+		);
+		$reason = isset( $risk['reason'] ) ? sanitize_key( $risk['reason'] ) : '';
+		$values = array(
+			'recaptcha_result' => array( 'label' => 'Resultado', 'value' => isset( $labels[ $reason ] ) ? $labels[ $reason ] : $reason ),
+		);
+		if ( isset( $risk['score'] ) && is_numeric( $risk['score'] ) ) {
+			$values['recaptcha_score'] = array( 'label' => 'Score', 'value' => number_format_i18n( (float) $risk['score'], 2 ) );
+		}
+		if ( ! empty( $risk['reasons'] ) && is_array( $risk['reasons'] ) ) {
+			$values['recaptcha_reasons'] = array( 'label' => 'Sinais do Google', 'value' => implode( ', ', array_map( 'sanitize_text_field', $risk['reasons'] ) ) );
+		}
+		if ( ! empty( $risk['provider_reason'] ) && is_scalar( $risk['provider_reason'] ) ) {
+			$values['recaptcha_provider_reason'] = array( 'label' => 'Motivo do token', 'value' => sanitize_text_field( $risk['provider_reason'] ) );
+		}
+		if ( ! empty( $risk['assessment_name'] ) && is_scalar( $risk['assessment_name'] ) ) {
+			$values['recaptcha_assessment'] = array( 'label' => 'Identificador da avaliação', 'value' => sanitize_text_field( $risk['assessment_name'] ) );
+		}
+		return $values;
 	}
 
 	private function detail_card( $title, $icon, $values, $form = null ) {
@@ -294,10 +393,13 @@ class WPFV_Admin {
 	private function form_settings( $form ) {
 		$settings             = WPFV_Settings::get_for_form( $form );
 		$validation           = $settings['validation'];
+		$antispam             = $settings['antispam'];
 		$global_settings      = WPFV_Settings::get_global();
 		$pipedrive_configured = ! empty( $global_settings['pipedrive_domain'] ) && ! empty( $global_settings['pipedrive_token'] );
 		$brevo_configured     = ! empty( $global_settings['brevo_api_key'] );
 		$rdcrm_configured     = ( new WPFV_RDCRM_API() )->connected();
+		$recaptcha_configured = WPFV_Recaptcha::configured();
+		$antispam_metrics     = WPFV_Antispam::metrics_for_form( $form['id'] );
 		?>
 		<div class="wrap wpfv-admin-wrap">
 			<p><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-forms' ) ); ?>">&larr; Voltar aos formulários</a></p>
@@ -316,6 +418,7 @@ class WPFV_Admin {
 				<?php endif; ?>
 				<?php if ( $rdcrm_configured ) : ?><a href="#wpfv-rdcrm" class="nav-tab wpfv-nav-tab">RD CRM</a><?php endif; ?>
 				<a href="#wpfv-validation" class="nav-tab wpfv-nav-tab">Validações</a>
+				<a href="#wpfv-antispam" class="nav-tab wpfv-nav-tab">Antispam</a>
 			</nav>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'wpfv_save_form_' . $form['id'] ); ?>
@@ -356,12 +459,19 @@ class WPFV_Admin {
 				</section>
 				<?php endif; ?>
 
-				<section id="wpfv-validation" class="wpfv-tab-panel" hidden>
+			<section id="wpfv-validation" class="wpfv-tab-panel" hidden>
 					<div class="wpfv-validation-grid">
 						<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Telefone</h2><p>Padronize e valide números brasileiros.</p></div><div class="wpfv-card-body"><p><label><input type="checkbox" name="phone_validation" value="1" <?php checked( $validation['phone_validation'] ); ?>> Aplicar máscara e exigir DDD + número</label></p><p><label for="wpfv-phone-message"><strong>Mensagem de erro</strong></label><br><input id="wpfv-phone-message" class="large-text" type="text" name="phone_message" value="<?php echo esc_attr( $validation['phone_message'] ); ?>"></p></div></div>
 						<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>E-mail corporativo</h2><p>Bloqueie provedores públicos e padrões indesejados.</p></div><div class="wpfv-card-body"><p><label><input type="checkbox" name="email_block_enabled" value="1" <?php checked( $validation['email_block_enabled'] ); ?>> Exigir e-mail corporativo</label></p><?php $this->validation_textarea( 'email_block_domains', 'Domínios bloqueados', $validation ); ?><?php $this->validation_textarea( 'email_block_suffixes', 'Sufixos bloqueados', $validation ); ?><?php $this->validation_textarea( 'email_block_words', 'Palavras bloqueadas no domínio', $validation ); ?><p><label for="wpfv-email-msg-domains">Mensagem para domínio</label><br><input id="wpfv-email-msg-domains" class="large-text" type="text" name="email_msg_domains" value="<?php echo esc_attr( $validation['email_msg_domains'] ); ?>"></p><p><label for="wpfv-email-msg-suffixes">Mensagem para sufixo</label><br><input id="wpfv-email-msg-suffixes" class="large-text" type="text" name="email_msg_suffixes" value="<?php echo esc_attr( $validation['email_msg_suffixes'] ); ?>"></p><p><label for="wpfv-email-msg-words">Mensagem para palavra</label><br><input id="wpfv-email-msg-words" class="large-text" type="text" name="email_msg_words" value="<?php echo esc_attr( $validation['email_msg_words'] ); ?>"></p></div></div>
-					</div>
-				</section>
+				</div>
+			</section>
+			<section id="wpfv-antispam" class="wpfv-tab-panel" hidden>
+				<?php if ( ! $recaptcha_configured ) : ?><div class="notice notice-warning inline"><p>Configure o projeto e as chaves do Google reCAPTCHA em <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-settings#wpfv-settings-antispam' ) ); ?>">Configurações</a> antes de ativar esta proteção.</p></div><?php endif; ?>
+				<div class="wpfv-validation-grid">
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Google reCAPTCHA</h2><p>Avalie cada envio sem apresentar um desafio visual.</p></div><div class="wpfv-card-body"><p><label><input type="checkbox" name="recaptcha_enabled" value="1" <?php checked( $antispam['recaptcha_enabled'] ); ?> <?php disabled( ! $recaptcha_configured ); ?>> Habilitar reCAPTCHA neste formulário</label></p><p><label for="wpfv-score-threshold"><strong>Score mínimo</strong></label><br><input id="wpfv-score-threshold" class="small-text" type="number" name="recaptcha_score_threshold" min="0" max="1" step="0.1" value="<?php echo esc_attr( $antispam['score_threshold'] ); ?>"></p><p class="description">Comece com 0,5. Valores maiores são mais rigorosos; scores inferiores ficam em quarentena.</p></div></div>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Proteções locais</h2><p>Ativas automaticamente, mesmo quando o Google estiver indisponível.</p></div><div class="wpfv-card-body"><ul><li>Honeypot e tempo mínimo de <?php echo absint( WPFV_Antispam::MIN_SECONDS ); ?> segundos</li><li>Máximo de <?php echo absint( WPFV_Antispam::RATE_LIMIT ); ?> envios por IP a cada 10 minutos</li><li>Supressão de payloads repetidos por 10 minutos</li><li>Spam em quarentena por 90 dias</li></ul><?php if ( $antispam_metrics ) : ?><details><summary>Ver bloqueios e alertas acumulados</summary><dl class="wpfv-antispam-metrics"><?php foreach ( $antispam_metrics as $reason => $count ) : ?><div><dt><?php echo esc_html( str_replace( '_', ' ', $reason ) ); ?></dt><dd><?php echo absint( $count ); ?></dd></div><?php endforeach; ?></dl></details><?php else : ?><p class="description">Nenhum evento antispam contabilizado ainda.</p><?php endif; ?></div></div>
+				</div>
+			</section>
 				<div class="wpfv-actions"><?php submit_button( 'Salvar configurações', 'primary', 'submit', false ); ?></div>
 			</form>
 		</div>
@@ -408,17 +518,22 @@ class WPFV_Admin {
 		if ( ! current_user_can( 'manage_options' ) ) { return; }
 		$s     = WPFV_Settings::get_global();
 		$nonce = wp_create_nonce( 'wpfv_api_test' );
+		$recaptcha_health = WPFV_Recaptcha::health();
 		?>
 		<div class="wrap wpfv-admin-wrap">
 			<h1>Configurações de Contatos</h1>
 			<p class="wpfv-page-description">Conecte os serviços externos e defina como os eventos técnicos serão registrados.</p>
 			<?php if ( isset( $_GET['updated'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Configurações salvas.</p></div><?php endif; ?>
 			<?php if ( isset( $_GET['rdcrm'] ) ) : ?><div class="notice notice-<?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'success':'warning'; ?> is-dismissible"><p><?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'RD CRM conectado com sucesso.':'Estado da conexão do RD CRM atualizado.'; ?></p></div><?php endif; ?>
-			<nav class="nav-tab-wrapper" aria-label="Seções de configuração"><a href="#wpfv-settings-logs" class="nav-tab nav-tab-active wpfv-nav-tab">Logs</a><a href="#wpfv-settings-integrations" class="nav-tab wpfv-nav-tab">Integrações</a></nav>
+			<nav class="nav-tab-wrapper" aria-label="Seções de configuração"><a href="#wpfv-settings-logs" class="nav-tab nav-tab-active wpfv-nav-tab">Logs</a><a href="#wpfv-settings-antispam" class="nav-tab wpfv-nav-tab">Antispam</a><a href="#wpfv-settings-integrations" class="nav-tab wpfv-nav-tab">Integrações</a></nav>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'wpfv_save_global' ); ?>
 				<input type="hidden" name="action" value="wpfv_save_global_settings">
 				<section id="wpfv-settings-logs" class="wpfv-tab-panel"><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Logs</h2><p>Defina por quanto tempo os eventos das integrações serão mantidos.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Registro</th><td><label><input type="checkbox" name="logging_enabled" value="1" <?php checked( $s['logging_enabled'] ); ?>> Registrar eventos das integrações</label></td></tr><tr><th scope="row"><label for="wpfv-retention">Retenção</label></th><td><input id="wpfv-retention" class="small-text" type="number" min="1" max="3650" name="log_retention_days" value="<?php echo absint( $s['log_retention_days'] ); ?>"> dias</td></tr></table></div></div></section>
+				<section id="wpfv-settings-antispam" class="wpfv-tab-panel" hidden><div class="wpfv-settings-stack">
+					<?php if ( ! empty( $recaptcha_health['message'] ) ) : ?><div class="notice notice-<?php echo esc_attr( 'error' === $recaptcha_health['status'] ? 'error' : ( 'warning' === $recaptcha_health['status'] ? 'warning' : 'success' ) ); ?> inline"><p><?php echo esc_html( $recaptcha_health['message'] ); ?><?php if ( ! empty( $recaptcha_health['time'] ) ) : ?> <small>Último evento: <?php echo esc_html( get_date_from_gmt( gmdate( 'Y-m-d H:i:s', absint( $recaptcha_health['time'] ) ), 'd/m/Y H:i' ) ); ?>.</small><?php endif; ?></p></div><?php endif; ?>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Google Cloud reCAPTCHA</h2><p>Use um projeto pertencente ao cliente e uma chave baseada em pontuação.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row"><label for="wpfv-recaptcha-project">Project ID</label></th><td><input id="wpfv-recaptcha-project" class="large-text code" type="text" name="recaptcha_project_id" value="<?php echo esc_attr( $s['recaptcha_project_id'] ); ?>" autocomplete="off"></td></tr><tr><th scope="row"><label for="wpfv-recaptcha-site-key">Site key</label></th><td><input id="wpfv-recaptcha-site-key" class="large-text code" type="text" name="recaptcha_site_key" value="<?php echo esc_attr( $s['recaptcha_site_key'] ); ?>" autocomplete="off"></td></tr><tr><th scope="row"><label for="wpfv-recaptcha-api-key">API key</label></th><td><input id="wpfv-recaptcha-api-key" class="large-text" type="password" name="recaptcha_api_key" value="" placeholder="<?php echo $s['recaptcha_api_key'] ? esc_attr__( 'Chave configurada — deixe vazio para manter', 'wp-formvault' ) : ''; ?>" autocomplete="new-password"><p class="description">Restrinja esta chave à API reCAPTCHA Enterprise no Google Cloud. Ela nunca é enviada ao navegador nem registrada nos logs.</p></td></tr></table><p><a href="https://cloud.google.com/recaptcha/docs/create-key-website" target="_blank" rel="noopener noreferrer">Abrir instruções oficiais do Google <span class="screen-reader-text">(abre em nova aba)</span></a></p></div></div>
+				</div></section>
 				<section id="wpfv-settings-integrations" class="wpfv-tab-panel" hidden><div class="wpfv-settings-stack">
 					<div class="card wpfv-admin-card">
 						<div class="wpfv-card-header"><h2>Pipedrive</h2><p>Credenciais usadas para consultar campos e criar negociações.</p></div>
@@ -446,6 +561,7 @@ class WPFV_Admin {
 		$current = WPFV_Settings::get_global();
 		$token   = isset( $_POST['pipedrive_token'] ) ? sanitize_text_field( wp_unslash( $_POST['pipedrive_token'] ) ) : '';
 		$brevo   = isset( $_POST['brevo_api_key'] ) ? sanitize_text_field( wp_unslash( $_POST['brevo_api_key'] ) ) : '';
+		$recaptcha_api_key = isset( $_POST['recaptcha_api_key'] ) ? sanitize_text_field( wp_unslash( $_POST['recaptcha_api_key'] ) ) : '';
 		$rd_secret = isset($_POST['rdcrm_client_secret']) ? sanitize_text_field(wp_unslash($_POST['rdcrm_client_secret'])) : '';
 		$rd_client = isset($_POST['rdcrm_client_id']) ? sanitize_text_field(wp_unslash($_POST['rdcrm_client_id'])) : '';
 		$credentials_changed = $rd_client !== $current['rdcrm_client_id'] || (''!==$rd_secret && $rd_secret!==$current['rdcrm_client_secret']);
@@ -460,6 +576,9 @@ class WPFV_Admin {
 				'rdcrm_access_token' => $credentials_changed?'':$current['rdcrm_access_token'],
 				'rdcrm_refresh_token' => $credentials_changed?'':$current['rdcrm_refresh_token'],
 				'rdcrm_token_expires_at' => $credentials_changed?0:$current['rdcrm_token_expires_at'],
+				'recaptcha_project_id' => isset( $_POST['recaptcha_project_id'] ) ? sanitize_text_field( wp_unslash( $_POST['recaptcha_project_id'] ) ) : '',
+				'recaptcha_site_key' => isset( $_POST['recaptcha_site_key'] ) ? sanitize_text_field( wp_unslash( $_POST['recaptcha_site_key'] ) ) : '',
+				'recaptcha_api_key' => '' !== $recaptcha_api_key ? $recaptcha_api_key : $current['recaptcha_api_key'],
 				'logging_enabled'    => ! empty( $_POST['logging_enabled'] ),
 				'log_retention_days' => isset( $_POST['log_retention_days'] ) ? absint( $_POST['log_retention_days'] ) : 90,
 			)
@@ -584,6 +703,10 @@ class WPFV_Admin {
 				'rdcrm_deal_title'=> $has_rdcrm&&isset($_POST['rdcrm_deal_title'])?sanitize_text_field(wp_unslash($_POST['rdcrm_deal_title'])):$current_settings['rdcrm_deal_title'],
 				'rdcrm_field_map'=> $rd_map,
 				'validation'=> $this->sanitize_validation(),
+				'antispam'=> array(
+					'recaptcha_enabled' => WPFV_Recaptcha::configured() && ! empty( $_POST['recaptcha_enabled'] ),
+					'score_threshold'   => isset( $_POST['recaptcha_score_threshold'] ) ? max( 0, min( 1, (float) wp_unslash( $_POST['recaptcha_score_threshold'] ) ) ) : 0.5,
+				),
 			)
 		);
 

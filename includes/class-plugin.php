@@ -58,6 +58,7 @@ final class WPFV_Plugin {
 		if ( $last_cleanup < time() - DAY_IN_SECONDS ) {
 			$repository = new WPFV_Submission_Repository();
 			$repository->purge_expired_logs();
+			$repository->purge_expired_spam( 90 );
 			update_option( 'wpfv_last_log_cleanup', time(), false );
 		}
 	}

@@ -28,3 +28,11 @@ form[data-wpfv-form][aria-busy="true"] [type="submit"] {
 	opacity: 0.72;
 }
 .wpfv-field-error{display:block;color:#b32d2e;font-size:13px;margin-top:5px}.wpfv-field-error[hidden]{display:none}
+
+.wpfv-honeypot {
+	position: absolute !important;
+	left: -10000px !important;
+	width: 1px !important;
+	height: 1px !important;
+	overflow: hidden !important;
+}

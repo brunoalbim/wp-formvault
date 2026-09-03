@@ -36,6 +36,45 @@ class WPFV_Submission_Repository {
 		$cutoff   = gmdate( 'Y-m-d H:i:s', time() - ( DAY_IN_SECONDS * $days ) );
 		return $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}wpfv_logs WHERE created_at < %s", $cutoff ) );
 	}
+
+	/** Delete spam submissions and related local history after the review window. */
+	public function purge_expired_spam( $days = 90 ) {
+		global $wpdb;
+		$days       = max( 1, absint( $days ) );
+		$cutoff     = gmdate( 'Y-m-d H:i:s', time() - ( DAY_IN_SECONDS * $days ) );
+		$submissions = $wpdb->prefix . 'wpfv_submissions';
+		$logs        = $wpdb->prefix . 'wpfv_logs';
+		$deliveries  = $wpdb->prefix . 'wpfv_deliveries';
+
+		$wpdb->query( 'START TRANSACTION' );
+		$logs_deleted = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE l FROM {$logs} l INNER JOIN {$submissions} s ON s.id = l.submission_id WHERE s.status = %s AND s.created_at < %s",
+				'spam',
+				$cutoff
+			)
+		);
+		$deliveries_deleted = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE d FROM {$deliveries} d INNER JOIN {$submissions} s ON s.id = d.submission_id WHERE s.status = %s AND s.created_at < %s",
+				'spam',
+				$cutoff
+			)
+		);
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$submissions} WHERE status = %s AND created_at < %s",
+				'spam',
+				$cutoff
+			)
+		);
+		if ( false === $logs_deleted || false === $deliveries_deleted || false === $deleted ) {
+			$wpdb->query( 'ROLLBACK' );
+			return false;
+		}
+		$wpdb->query( 'COMMIT' );
+		return (int) $deleted;
+	}
 	/**
 	 * Store a validated submission.
 	 *
@@ -46,6 +85,7 @@ class WPFV_Submission_Repository {
 		global $wpdb;
 		$now = current_time( 'mysql', true );
 
+		$status   = isset( $data['status'] ) && in_array( $data['status'], array( 'stored', 'spam', 'approved' ), true ) ? $data['status'] : 'stored';
 		$inserted = $wpdb->insert(
 			$wpdb->prefix . 'wpfv_submissions',
 			array(
@@ -57,11 +97,12 @@ class WPFV_Submission_Repository {
 				'attribution'   => wp_json_encode( $data['attribution'] ),
 				'source_url'    => $data['source_url'],
 				'source_title'  => $data['source_title'],
-				'status'        => 'stored',
+				'status'        => $status,
+				'risk_data'     => wp_json_encode( isset( $data['risk_data'] ) && is_array( $data['risk_data'] ) ? $data['risk_data'] : array() ),
 				'created_at'    => $now,
 				'updated_at'    => $now,
 			),
-			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -82,6 +123,38 @@ class WPFV_Submission_Repository {
 		return $wpdb->get_row(
 			$wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpfv_submissions WHERE id = %d", $id )
 		);
+	}
+
+	/** Atomically release one quarantined submission. */
+	public function approve_spam( $id ) {
+		global $wpdb;
+		$id = absint( $id );
+		if ( ! $id ) {
+			return false;
+		}
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$wpdb->prefix}wpfv_submissions SET status = %s, updated_at = %s WHERE id = %d AND status = %s",
+				'approved',
+				current_time( 'mysql', true ),
+				$id,
+				'spam'
+			)
+		);
+		return 1 === $updated;
+	}
+
+	/** Count submissions by an admin-facing status filter. */
+	public function count_by_status( $status = '' ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'wpfv_submissions';
+		if ( 'spam' === $status ) {
+			return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE status = %s", 'spam' ) );
+		}
+		if ( 'legitimate' === $status ) {
+			return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status IN ('stored','approved')" );
+		}
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
 	}
 
 	/** Delete one submission and its local delivery/log history. */
@@ -106,13 +179,20 @@ class WPFV_Submission_Repository {
 	 */
 	public function query( $args = array() ) {
 		global $wpdb;
-		$args = wp_parse_args( $args, array( 'form_id' => '', 'search' => '', 'page' => 1, 'per_page' => 20 ) );
+		$args = wp_parse_args( $args, array( 'form_id' => '', 'search' => '', 'status' => '', 'page' => 1, 'per_page' => 20 ) );
 		$where = array( '1=1' );
 		$vars  = array();
 
 		if ( $args['form_id'] ) {
 			$where[] = 'form_id = %s';
 			$vars[]  = sanitize_key( $args['form_id'] );
+		}
+
+		if ( 'spam' === $args['status'] ) {
+			$where[] = 'status = %s';
+			$vars[]  = 'spam';
+		} elseif ( 'legitimate' === $args['status'] ) {
+			$where[] = "status IN ('stored','approved')";
 		}
 
 		if ( $args['search'] ) {

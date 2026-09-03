@@ -44,7 +44,6 @@ Tipos aceitos: `text`, `textarea`, `email`, `tel`, `url`, `integer`, `checkbox`,
 >
 	<?php wpfv_form_hidden_fields( 'example_contact' ); ?>
 
-	<input type="text" name="wpfv_website" tabindex="-1" autocomplete="off" aria-hidden="true">
 	<input type="text" name="name" required>
 	<input type="email" name="email" required>
 	<input type="tel" name="phone">
@@ -59,7 +58,7 @@ Tipos aceitos: `text`, `textarea`, `email`, `tel`, `url`, `integer`, `checkbox`,
 </form>
 ```
 
-O helper adiciona `action`, ID do formulário e nonce. O atributo `data-wpfv-form` habilita envio AJAX e captura automática de página, UTMs, `gclid` e `fbclid`; sem JavaScript, o envio continua funcionando por `admin-post.php`.
+O helper adiciona `action`, ID do formulário, nonce, marcador temporal assinado e honeypot. O atributo `data-wpfv-form` habilita envio AJAX, avaliação do reCAPTCHA quando configurado e captura automática de página, UTMs, `gclid` e `fbclid`; sem JavaScript, o envio continua funcionando por `admin-post.php`, mas um formulário protegido pelo reCAPTCHA sem token será colocado em quarentena.
 
 ### 3. Configurar e testar
 
@@ -69,6 +68,23 @@ O helper adiciona `action`, ID do formulário e nonce. O atributo `data-wpfv-for
 4. Faça um envio e confirme o registro em **Contatos > Envios**.
 
 Somente campos declarados no esquema são processados. Não inclua credenciais, URLs ou dados específicos de cliente no código reutilizável.
+
+## Proteção antispam
+
+As proteções locais são automáticas: honeypot, tempo mínimo de preenchimento, limite de cinco envios por IP a cada dez minutos e supressão de payloads idênticos por dez minutos. Para o rate limit, o plugin usa somente um identificador criptográfico do IP. O IP bruto não é persistido pelo plugin; quando o reCAPTCHA está ativo, ele é enviado ao Google como contexto da avaliação, o que deve ser refletido na política de privacidade do site.
+
+Para habilitar o Google Cloud reCAPTCHA baseado em pontuação:
+
+1. No projeto Google Cloud pertencente ao cliente, crie uma chave reCAPTCHA para website baseada em pontuação e autorize o hostname do site.
+2. Crie uma API key restrita à API reCAPTCHA Enterprise.
+3. Em **Contatos > Configurações > Antispam**, informe Project ID, site key e API key.
+4. Em **Contatos > Formulários**, abra a aba **Antispam**, habilite o reCAPTCHA e comece com score mínimo `0.5`.
+
+Envios abaixo do score, com token inválido ou com erro permanente de configuração são armazenados com status **Spam** e não acionam e-mail, webhook ou CRM. O visitante recebe a mesma confirmação neutra de um envio legítimo. Um administrador pode revisar o registro e usar **Aprovar como legítimo** para liberar as integrações. O spam é excluído automaticamente após 90 dias.
+
+Falhas transitórias de rede, HTTP 429 ou erros 5xx do Google usam somente as proteções locais e aparecem como estado degradado no painel. Erros de credencial colocam o envio em quarentena para não desabilitar a proteção silenciosamente. Valide primeiro em homologação e monitore a distribuição dos scores por 7–14 dias antes de tornar o limiar mais rigoroso.
+
+Se o site usa Content Security Policy, adicione `https://www.google.com/recaptcha/` e `https://www.gstatic.com/recaptcha/` a `script-src`, `https://www.google.com/recaptcha/` e `https://recaptcha.google.com/recaptcha/` a `frame-src`, e `https://www.google.com/recaptcha/` a `connect-src`. Revise também a política de privacidade do site antes da ativação.
 
 ## Payload do webhook
 
@@ -98,7 +114,7 @@ O webhook envia o ID do formulário tanto em `source` quanto em `form.source`. O
 
 ## Extensão
 
-Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo filtro `wpfv_integrations`.
+Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo filtro `wpfv_integrations`. O hook `wpfv_submission_stored` só é disparado depois que o envio passa pelas proteções antispam ou é aprovado manualmente.
 
 ## RD Station CRM v2
 

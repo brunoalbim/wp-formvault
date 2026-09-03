@@ -27,7 +27,7 @@ class WPFV_Integration_Manager {
 	 */
 	public function process( $submission_id, $form, $only = '' ) {
 		$submission = $this->repository->get( $submission_id );
-		if ( ! $submission ) {
+		if ( ! $submission || ! in_array( $submission->status, array( 'stored', 'approved' ), true ) ) {
 			return false;
 		}
 

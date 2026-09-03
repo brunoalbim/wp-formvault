@@ -56,6 +56,33 @@
 		input.value = value || '';
 	}
 
+	function plainHidden(form, name, value) {
+		var input = form.querySelector('input[name="' + name + '"]');
+		if (!input) {
+			input = document.createElement('input');
+			input.type = 'hidden';
+			input.name = name;
+			form.appendChild(input);
+		}
+		input.value = value || '';
+	}
+
+	function recaptchaToken(form) {
+		var formId = form.getAttribute('data-wpfv-form');
+		var config = window.wpFormVault.recaptcha;
+		var formConfig = config && config.forms && config.forms[formId];
+		if (!formConfig) { return Promise.resolve(''); }
+		if (!window.grecaptcha || !window.grecaptcha.enterprise) { return Promise.resolve(''); }
+
+		return new Promise(function (resolve) {
+			window.grecaptcha.enterprise.ready(function () {
+				window.grecaptcha.enterprise.execute(config.siteKey, { action: formConfig.action })
+					.then(resolve)
+					.catch(function () { resolve(''); });
+			});
+		});
+	}
+
 	function inject(form, data) {
 		UTM_KEYS.forEach(function (key) {
 			hidden(form, 'first_' + key, data.first && data.first[key]);
@@ -115,11 +142,14 @@
 				button.textContent = window.wpFormVault.sendingLabel;
 			}
 
-			fetch(window.wpFormVault.ajaxUrl, {
-				method: 'POST',
-				body: new FormData(form),
-				credentials: 'same-origin',
-				headers: { 'X-Requested-With': 'XMLHttpRequest' }
+			recaptchaToken(form).then(function (token) {
+				plainHidden(form, 'wpfv_recaptcha_token', token);
+				return fetch(window.wpFormVault.ajaxUrl, {
+					method: 'POST',
+					body: new FormData(form),
+					credentials: 'same-origin',
+					headers: { 'X-Requested-With': 'XMLHttpRequest' }
+				});
 			}).then(function (response) {
 				return response.json().catch(function () { throw new Error('invalid_json'); });
 			}).then(function (payload) {
@@ -130,6 +160,7 @@
 				}
 				showNotice(form, responseData.message, true);
 				form.reset();
+				plainHidden(form, 'wpfv_recaptcha_token', '');
 				inject(form, data);
 				form.dispatchEvent(new CustomEvent('wpfv:success', { detail: responseData }));
 			}).catch(function () {

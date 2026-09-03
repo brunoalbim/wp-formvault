@@ -299,6 +299,48 @@
 .wpfv-badge--success { background: #d8f0df; color: #18743a; }
 .wpfv-badge--error { background: #f8d7da; color: #9c2430; }
 .wpfv-badge--pending { background: #fff0c2; color: #785b00; }
+.wpfv-badge--stored { background: #d8f0df; color: #18743a; }
+.wpfv-badge--approved { background: #dbeafe; color: #135e96; }
+.wpfv-badge--spam { background: #f8d7da; color: #9c2430; }
+
+.wpfv-submission-filters {
+	clear: both;
+	padding-top: 8px;
+}
+
+.wpfv-submissions-table {
+	margin-top: 16px;
+}
+
+.wpfv-spam-review {
+	display: flex;
+	gap: 16px;
+	align-items: center;
+	justify-content: space-between;
+	margin: 16px 0 !important;
+	padding: 10px 12px;
+}
+
+.wpfv-spam-review form,
+.wpfv-spam-review p {
+	margin: 0;
+}
+
+.wpfv-antispam-metrics > div {
+	display: flex;
+	justify-content: space-between;
+	padding: 5px 0;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.wpfv-antispam-metrics dt {
+	text-transform: capitalize;
+}
+
+.wpfv-antispam-metrics dd {
+	margin: 0;
+	font-weight: 600;
+}
 
 .wpfv-delivery-history {
 	margin-top: 16px;
@@ -344,5 +386,11 @@
 	.wpfv-detail-list > div {
 		grid-template-columns: 1fr;
 		gap: 4px;
+	}
+	.wpfv-spam-review {
+		display: block;
+	}
+	.wpfv-spam-review form {
+		margin-top: 10px;
 	}
 }

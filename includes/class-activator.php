@@ -34,12 +34,14 @@ class WPFV_Activator {
 			source_url text NOT NULL,
 			source_title text NOT NULL,
 			status varchar(30) NOT NULL DEFAULT 'stored',
+			risk_data longtext NOT NULL,
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
 			PRIMARY KEY  (id),
 			KEY form_id (form_id),
 			KEY primary_email (primary_email),
 			KEY status (status),
+			KEY status_created (status,created_at),
 			KEY created_at (created_at)
 		) {$charset_collate};";
 
