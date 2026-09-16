@@ -88,5 +88,5 @@ class WPFV_Activator {
 	 *
 	 * @return void
 	 */
-	public static function deactivate() {}
+	public static function deactivate() { wp_clear_scheduled_hook( 'wpfv_rdcrm_refresh_token' ); }
 }

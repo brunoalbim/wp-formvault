@@ -42,6 +42,7 @@ final class WPFV_Plugin {
 		}
 
 		add_action( 'init', array( $this, 'maybe_upgrade' ), 1 );
+		add_action( 'wpfv_rdcrm_refresh_token', array( $this, 'refresh_rdcrm_token' ) );
 	}
 
 	/**
@@ -53,6 +54,9 @@ final class WPFV_Plugin {
 		if ( WPFV_VERSION !== get_option( 'wpfv_version' ) ) {
 			WPFV_Activator::activate();
 		}
+		if ( ( new WPFV_RDCRM_API() )->connected() && ! wp_next_scheduled( 'wpfv_rdcrm_refresh_token' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'wpfv_rdcrm_refresh_token' );
+		}
 
 		$last_cleanup = absint( get_option( 'wpfv_last_log_cleanup', 0 ) );
 		if ( $last_cleanup < time() - DAY_IN_SECONDS ) {
@@ -60,6 +64,21 @@ final class WPFV_Plugin {
 			$repository->purge_expired_logs();
 			$repository->purge_expired_spam( 90 );
 			update_option( 'wpfv_last_log_cleanup', time(), false );
+		}
+	}
+
+	/** Keep the rolling RD CRM refresh token active even without form submissions. */
+	public function refresh_rdcrm_token() {
+		$api = new WPFV_RDCRM_API();
+		if ( ! $api->connected() ) {
+			return;
+		}
+		$result = $api->refresh_if_needed();
+		if ( empty( $result['success'] ) ) {
+			( new WPFV_Submission_Repository() )->log( 'error', 'rdcrm', 'Falha na renovação programada do token RD CRM.', array(
+				'http_status' => isset( $result['code'] ) ? absint( $result['code'] ) : 0,
+				'error' => isset( $result['error'] ) ? $result['error'] : 'Falha sem detalhes.',
+			) );
 		}
 	}
 

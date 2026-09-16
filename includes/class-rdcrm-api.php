@@ -6,15 +6,20 @@ class WPFV_RDCRM_API {
 	const TOKEN_URL = 'https://api.rd.services/oauth2/token';
 	const AUTH_URL = 'https://accounts.rdstation.com/oauth/authorize';
 	const REFRESH_LOCK = 'wpfv_rdcrm_refresh_lock';
+	const HEALTH_OPTION = 'wpfv_rdcrm_token_health';
 	private $settings;
 
 	public function __construct() { $this->settings = WPFV_Settings::get_global(); }
+	public static function health() { return get_option( self::HEALTH_OPTION, array() ); }
+	public static function clear_health() { delete_option( self::HEALTH_OPTION ); }
 	public static function callback_url() { return admin_url( 'admin-post.php?action=wpfv_rdcrm_oauth_callback' ); }
 	public function configured() { return ! empty( $this->settings['rdcrm_client_id'] ) && ! empty( $this->settings['rdcrm_client_secret'] ); }
 	public function connected() { return $this->configured() && ( ! empty( $this->settings['rdcrm_refresh_token'] ) || ! empty( $this->settings['rdcrm_access_token'] ) ); }
 	public function authorization_url( $state ) { return add_query_arg( array( 'response_type' => 'code', 'client_id' => $this->settings['rdcrm_client_id'], 'redirect_uri' => self::callback_url(), 'state' => $state ), self::AUTH_URL ); }
 	public function exchange_code( $code ) { return $this->token_request( array( 'client_id' => $this->settings['rdcrm_client_id'], 'client_secret' => $this->settings['rdcrm_client_secret'], 'code' => $code, 'redirect_uri' => self::callback_url(), 'grant_type' => 'authorization_code' ), 'autorização' ); }
-	public function disconnect() { $s = WPFV_Settings::get_global(); $s['rdcrm_access_token'] = ''; $s['rdcrm_refresh_token'] = ''; $s['rdcrm_token_expires_at'] = 0; return WPFV_Settings::save_global( $s ); }
+	public function disconnect() { $s = WPFV_Settings::get_global(); $s['rdcrm_access_token'] = ''; $s['rdcrm_refresh_token'] = ''; $s['rdcrm_token_expires_at'] = 0; delete_option( self::HEALTH_OPTION ); return WPFV_Settings::save_global( $s ); }
+	public function refresh_if_needed() { return $this->token(); }
+	private function record_health( $status, $message = '' ) { update_option( self::HEALTH_OPTION, array( 'status' => $status, 'message' => sanitize_text_field( $message ), 'time' => time() ), false ); }
 
 	private function refresh() {
 		if ( empty( $this->settings['rdcrm_refresh_token'] ) ) return array( 'success' => false, 'code' => 0, 'error' => 'RD CRM: refresh token ausente. Reconecte a integração.' );
@@ -23,13 +28,19 @@ class WPFV_RDCRM_API {
 
 	private function token_request( $body, $operation ) {
 		$response = wp_remote_post( self::TOKEN_URL, array( 'timeout' => 20, 'headers' => array( 'Content-Type' => 'application/x-www-form-urlencoded' ), 'body' => $body ) );
-		if ( is_wp_error( $response ) ) return array( 'success' => false, 'code' => 0, 'error' => 'RD CRM: falha de rede na ' . $operation . ': ' . sanitize_text_field( $response->get_error_message() ) );
+		if ( is_wp_error( $response ) ) {
+			$error = 'RD CRM: falha de rede na ' . $operation . ': ' . sanitize_text_field( $response->get_error_message() );
+			$this->record_health( 'error', $error );
+			return array( 'success' => false, 'code' => 0, 'error' => $error );
+		}
 		$code = wp_remote_retrieve_response_code( $response );
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( $code < 200 || $code >= 300 || empty( $data['access_token'] ) ) {
 			$message = $this->error( $data, 'Resposta sem token de acesso.' );
 			$hint = 'renovação do token' === $operation ? ' Se o refresh token expirou ou foi revogado, reconecte a integração em Configurações.' : ' Confira Client ID, Client Secret e URL de callback.';
-			return array( 'success' => false, 'code' => $code, 'error' => sprintf( 'RD CRM: falha na %s (HTTP %d): %s%s', $operation, $code, $message, $hint ) );
+			$error = sprintf( 'RD CRM: falha na %s (HTTP %d): %s%s', $operation, $code, $message, $hint );
+			$this->record_health( 'error', $error );
+			return array( 'success' => false, 'code' => $code, 'error' => $error );
 		}
 		$settings = WPFV_Settings::get_global();
 		$settings['rdcrm_access_token'] = sanitize_text_field( $data['access_token'] );
@@ -37,6 +48,7 @@ class WPFV_RDCRM_API {
 		$settings['rdcrm_token_expires_at'] = time() + max( 60, absint( isset( $data['expires_in'] ) ? $data['expires_in'] : 7200 ) );
 		WPFV_Settings::save_global( $settings );
 		$this->settings = $settings;
+		$this->record_health( 'success' );
 		return array( 'success' => true, 'code' => $code );
 	}
 
