@@ -120,6 +120,9 @@ class WPFV_RDCRM_API {
 	public function find_contact( $email ) { return $this->request( 'GET', 'contacts', array(), array( 'filter' => 'email:' . $email ) ); }
 	public function create_contact( $data ) { return $this->request( 'POST', 'contacts', $data ); }
 	public function update_contact( $id, $data ) { return $this->request( 'PUT', 'contacts/' . rawurlencode( (string) $id ), $data ); }
+	public function find_organization( $name ) { return $this->request( 'GET', 'organizations', array(), array( 'filter' => 'name:"' . str_replace( array( '\\', '"' ), array( '\\\\', '\\"' ), $name ) . '"' ) ); }
+	public function create_organization( $data ) { return $this->request( 'POST', 'organizations', $data ); }
+	public function update_organization( $id, $data ) { return $this->request( 'PUT', 'organizations/' . rawurlencode( (string) $id ), $data ); }
 	public function create_deal( $data ) { return $this->request( 'POST', 'deals', $data ); }
 	public function get_deal( $id ) { return $this->request( 'GET', 'deals/' . rawurlencode( (string) $id ) ); }
 	public function update_deal( $id, $data ) { return $this->request( 'PATCH', 'deals/' . rawurlencode( (string) $id ), $data ); }

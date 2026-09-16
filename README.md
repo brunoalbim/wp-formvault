@@ -125,7 +125,9 @@ Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo 
 1. Crie um aplicativo no App Publisher da RD Station e cadastre como redirect URI a URL exibida em **Contatos > Configurações > Integrações > RD CRM**.
 2. Salve o Client ID e Client Secret no plugin e clique em **Conectar** para concluir o OAuth2. O secret e os tokens salvos não voltam a ser exibidos.
 3. Em **Contatos > Formulários**, abra a aba **RD CRM**, escolha funil, etapa e responsável, defina o título e mapeie obrigatoriamente nome e e-mail.
-4. Use `name`, `email`, `phone` e `job_title` nos campos padrão de contato. Para campos personalizados de contato ou negociação, use `custom:ID_DO_CAMPO`.
+4. Use `name`, `email`, `phone` e `job_title` nos campos padrão de contato. No mapeamento **Empresa**, selecione **Nome da empresa** e, se desejar, descrição, site, endereço e campos personalizados retornados pelo RD CRM.
+
+A empresa só é consultada quando o campo **Nome da empresa** está mapeado e preenchido no envio. O plugin procura uma empresa com o mesmo nome exato, atualiza seus outros campos mapeados ou cria uma nova empresa e associa seu ID ao contato e à negociação. Sem nome de empresa, o fluxo continua sem consultar nem cadastrar empresas.
 
 Se **Testar conexão** ou os catálogos falharem, o painel mostra a operação, o status HTTP e o detalhe retornado pelo RD CRM. Consulte **Contatos > Logs** para o registro da falha (com o registro de eventos habilitado). Um `refresh_token` expirado ou revogado exige reconectar a integração em **Contatos > Configurações > Integrações**. As seleções de funil, etapa, responsável e mapeamentos já salvos são preservadas enquanto o catálogo estiver indisponível.
 

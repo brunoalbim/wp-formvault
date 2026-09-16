@@ -65,15 +65,16 @@ class WPFV_Field_Mapper {
 	}
 
 	public function rdcrm( $fields, $settings ) {
-		$result = array( 'contact' => array( 'custom_fields' => array() ), 'deal' => array( 'custom_fields' => array() ) );
+		$result = array( 'contact' => array( 'custom_fields' => array() ), 'organization' => array( 'custom_fields' => array() ), 'deal' => array( 'custom_fields' => array() ) );
 		foreach ( (array) $settings['rdcrm_field_map'] as $row ) {
 			$source = isset( $row['source'] ) ? sanitize_key( $row['source'] ) : '';
 			$entity = isset( $row['entity'] ) ? sanitize_key( $row['entity'] ) : '';
 			$target = isset( $row['target'] ) ? sanitize_text_field( $row['target'] ) : '';
 			if ( ! $source || ! isset( $fields[ $source ] ) || ! isset( $result[ $entity ] ) || ! $target || '' === $fields[ $source ] ) { continue; }
 			$value = is_array( $fields[ $source ] ) ? implode( ', ', $fields[ $source ] ) : sanitize_text_field( $fields[ $source ] );
-			if ( 'email' === $target ) { $result['contact']['emails'] = array( array( 'email' => sanitize_email( $value ) ) ); }
-			elseif ( 'phone' === $target ) { $result['contact']['phones'] = array( array( 'phone' => $value, 'type' => 'work' ) ); }
+			if ( 'contact' === $entity && 'email' === $target ) { $result['contact']['emails'] = array( array( 'email' => sanitize_email( $value ) ) ); }
+			elseif ( 'contact' === $entity && 'phone' === $target ) { $result['contact']['phones'] = array( array( 'phone' => $value, 'type' => 'work' ) ); }
+			elseif ( 'organization' === $entity && 'address.line' === $target ) { $result['organization']['address']['line'] = $value; }
 			elseif ( 0 === strpos( $target, 'custom:' ) ) { $result[ $entity ]['custom_fields'][ substr( $target, 7 ) ] = $value; }
 			else { $result[ $entity ][ $target ] = $value; }
 		}
@@ -83,6 +84,7 @@ class WPFV_Field_Mapper {
 		$result['deal']['stage_id'] = (string) $settings['rdcrm_stage_id'];
 		$result['deal']['owner_id'] = (string) $settings['rdcrm_owner_id'];
 		if ( empty( $result['contact']['custom_fields'] ) ) { unset( $result['contact']['custom_fields'] ); }
+		if ( empty( $result['organization']['custom_fields'] ) ) { unset( $result['organization']['custom_fields'] ); }
 		if ( empty( $result['deal']['custom_fields'] ) ) { unset( $result['deal']['custom_fields'] ); }
 		return $result;
 	}
