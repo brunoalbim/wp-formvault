@@ -195,21 +195,119 @@
 
 	function requestRdCatalog( catalog, extra ) {
 		const body = new URLSearchParams( Object.assign( { action: 'wpfv_rdcrm_catalog', _ajax_nonce: window.wpfvAdmin.nonce, catalog: catalog }, extra || {} ) );
-		return fetch( window.wpfvAdmin.ajaxUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body.toString(), credentials: 'same-origin' } ).then( function ( response ) { return response.json(); } ).then( function ( response ) { if ( ! response.success ) { throw new Error( response.data && response.data.message ? response.data.message : 'Falha ao consultar o RD CRM.' ); } return response.data.items || []; } );
+		return fetch( window.wpfvAdmin.ajaxUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body.toString(), credentials: 'same-origin' } )
+			.then( function ( response ) {
+				return response.json().catch( function () { throw new Error( 'Resposta inválida do servidor (HTTP ' + response.status + ').' ); } );
+			} )
+			.then( function ( response ) {
+				if ( ! response.success ) throw new Error( response.data && response.data.message ? response.data.message : 'Falha ao consultar o RD CRM.' );
+				return response.data.items || [];
+			} );
 	}
 	const rdPipeline = document.getElementById( 'wpfv-rdcrm-pipeline' );
 	const rdStage = document.getElementById( 'wpfv-rdcrm-stage' );
 	const rdOwner = document.getElementById( 'wpfv-rdcrm-owner' );
 	const rdStatus = document.getElementById( 'wpfv-rdcrm-catalog-status' );
-	function rdMessage( message, error ) { if ( rdStatus ) { rdStatus.textContent = message; rdStatus.style.color = error ? '#b32d2e' : ''; } }
-	function loadRdStages() { if ( ! rdPipeline.value ) { fillSelect( rdStage, [], '— Selecione o funil —' ); return Promise.resolve(); } rdStage.disabled = true; return requestRdCatalog( 'stages', { pipeline_id: rdPipeline.value } ).then( function ( items ) { fillSelect( rdStage, items, '— Selecione a etapa —' ); rdStage.disabled = false; } ); }
+	const rdCatalogReady = document.getElementById( 'wpfv-rdcrm-catalog-ready' );
+	let rdBaseLoaded = false;
+	let rdFieldsLoaded = false;
+	let rdHasError = false;
+	function updateRdReady() { if ( rdCatalogReady ) rdCatalogReady.value = rdBaseLoaded && rdFieldsLoaded ? '1' : '0'; }
+	function rdMessage( message, error ) {
+		if ( error ) rdHasError = true;
+		if ( ! error && rdHasError ) return;
+		if ( rdStatus ) {
+			rdStatus.textContent = message;
+			rdStatus.style.color = error ? '#b32d2e' : '';
+		}
+	}
+	function fillRdSelect( select, items, placeholder ) {
+		const selected = String( select.dataset.selected || select.value || '' );
+		select.innerHTML = '';
+		select.appendChild( new Option( placeholder, '' ) );
+		let found = false;
+		items.forEach( function ( item ) {
+			const option = new Option( item.label, item.value );
+			if ( selected && ( String( item.value ) === selected || String( item.legacy_value || '' ) === selected ) ) {
+				option.selected = true;
+				found = true;
+			}
+			select.appendChild( option );
+		} );
+		if ( selected && ! found ) select.appendChild( new Option( 'Salvo (indisponível): ' + selected, selected, true, true ) );
+	}
+	function loadRdStages() {
+		if ( ! rdPipeline.value ) return Promise.resolve();
+		rdStage.disabled = true;
+		return requestRdCatalog( 'stages', { pipeline_id: rdPipeline.value } ).then( function ( items ) {
+			fillRdSelect( rdStage, items, '— Selecione a etapa —' );
+		} ).finally( function () { rdStage.disabled = false; } );
+	}
 	if ( rdPipeline && rdStage && rdOwner ) {
-		rdPipeline.addEventListener( 'change', function () { rdStage.dataset.selected = ''; loadRdStages().catch( function ( error ) { rdStage.disabled = false; rdMessage( error.message, true ); } ); } );
-		Promise.all( [ requestRdCatalog( 'pipelines' ), requestRdCatalog( 'users' ) ] ).then( function ( catalogs ) { fillSelect( rdPipeline, catalogs[0], '— Selecione o funil —' ); fillSelect( rdOwner, catalogs[1], '— Selecione o responsável —' ); return loadRdStages(); } ).then( function () { rdMessage( 'Funis, etapas e responsáveis carregados diretamente do RD CRM.', false ); } ).catch( function ( error ) { rdMessage( error.message, true ); } );
+		rdPipeline.addEventListener( 'change', function () {
+			rdBaseLoaded = false;
+			updateRdReady();
+			rdStage.dataset.selected = '';
+			rdStage.innerHTML = '';
+			rdStage.appendChild( new Option( '— Selecione a etapa —', '' ) );
+			loadRdStages().then( function () { rdBaseLoaded = true; updateRdReady(); } ).catch( function ( error ) { rdMessage( error.message + ' Os valores salvos foram preservados.', true ); } );
+		} );
+		requestRdCatalog( 'pipelines' ).then( function ( items ) {
+			fillRdSelect( rdPipeline, items, '— Selecione o funil —' );
+			return loadRdStages();
+		} ).then( function () { return requestRdCatalog( 'users' ); } ).then( function ( items ) {
+			fillRdSelect( rdOwner, items, '— Selecione o responsável —' );
+			rdBaseLoaded = true;
+			updateRdReady();
+			rdMessage( 'Funis, etapas e responsáveis carregados.', false );
+		} ).catch( function ( error ) {
+			rdMessage( error.message + ' Os valores salvos foram preservados. Consulte Contatos > Logs.', true );
+		} );
 		const rdFields = {};
-		function loadRdFieldRow( entitySelect ) { const target = entitySelect.closest( 'tr' ).querySelector( '.wpfv-rd-target' ); const entity = entitySelect.value; target.disabled = true; const request = rdFields[entity] ? Promise.resolve( rdFields[entity] ) : requestRdCatalog( 'fields', { entity: entity } ).then( function ( items ) { rdFields[entity] = items; return items; } ); request.then( function ( items ) { fillSelect( target, items, '— Selecione o campo —' ); target.disabled = false; } ).catch( function ( error ) { target.disabled = false; rdMessage( error.message, true ); } ); }
-		function bindRdRow( entitySelect ) { entitySelect.addEventListener( 'change', function () { const target = entitySelect.closest( 'tr' ).querySelector( '.wpfv-rd-target' ); target.dataset.selected = ''; loadRdFieldRow( entitySelect ); } ); loadRdFieldRow( entitySelect ); }
-		document.querySelectorAll( '.wpfv-rd-entity' ).forEach( bindRdRow );
-		const rdMapping = document.querySelector( '.wpfv-rd-mapping' ); if ( rdMapping ) { const body = rdMapping.querySelector( 'tbody' ); const template = rdMapping.querySelector( 'template' ); rdMapping.querySelector( '.wpfv-add-rd-mapping' ).addEventListener( 'click', function () { const row = template.content.firstElementChild.cloneNode( true ); body.appendChild( row ); bindRdRow( row.querySelector( '.wpfv-rd-entity' ) ); row.querySelector( '.wpfv-rd-source' ).focus(); } ); rdMapping.addEventListener( 'click', function ( event ) { const button = event.target.closest( '.wpfv-remove-rd-mapping' ); if ( button ) { button.closest( 'tr' ).remove(); if ( ! body.children.length ) rdMapping.querySelector( '.wpfv-add-rd-mapping' ).click(); } } ); }
+		function loadRdFieldRow( entitySelect ) {
+			const target = entitySelect.closest( 'tr' ).querySelector( '.wpfv-rd-target' );
+			const entity = entitySelect.value;
+			target.disabled = true;
+			const request = rdFields[ entity ] ? Promise.resolve( rdFields[ entity ] ) : requestRdCatalog( 'fields', { entity: entity } ).then( function ( items ) { rdFields[ entity ] = items; return items; } );
+			return request.then( function ( items ) {
+				fillRdSelect( target, items, '— Selecione o campo —' );
+				return true;
+			} ).catch( function ( error ) {
+				rdMessage( error.message + ' Os mapeamentos salvos foram preservados. Consulte Contatos > Logs.', true );
+				return false;
+			} ).finally( function () { target.disabled = false; } );
+		}
+		function bindRdRow( entitySelect ) {
+			entitySelect.addEventListener( 'change', function () {
+				const target = entitySelect.closest( 'tr' ).querySelector( '.wpfv-rd-target' );
+				target.dataset.selected = '';
+				target.innerHTML = '';
+				target.appendChild( new Option( '— Selecione o campo —', '' ) );
+				loadRdFieldRow( entitySelect );
+			} );
+			return loadRdFieldRow( entitySelect );
+		}
+		Promise.all( Array.from( document.querySelectorAll( '.wpfv-rd-entity' ) ).map( bindRdRow ) ).then( function ( results ) {
+			rdFieldsLoaded = results.every( Boolean );
+			updateRdReady();
+		} );
+		const rdMapping = document.querySelector( '.wpfv-rd-mapping' );
+		if ( rdMapping ) {
+			const body = rdMapping.querySelector( 'tbody' );
+			const template = rdMapping.querySelector( 'template' );
+			rdMapping.querySelector( '.wpfv-add-rd-mapping' ).addEventListener( 'click', function () {
+				const row = template.content.firstElementChild.cloneNode( true );
+				body.appendChild( row );
+				bindRdRow( row.querySelector( '.wpfv-rd-entity' ) );
+				row.querySelector( '.wpfv-rd-source' ).focus();
+			} );
+			rdMapping.addEventListener( 'click', function ( event ) {
+				const button = event.target.closest( '.wpfv-remove-rd-mapping' );
+				if ( button ) {
+					button.closest( 'tr' ).remove();
+					if ( ! body.children.length ) rdMapping.querySelector( '.wpfv-add-rd-mapping' ).click();
+				}
+			} );
+		}
 	}
 }() );

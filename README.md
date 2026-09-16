@@ -127,4 +127,6 @@ Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo 
 3. Em **Contatos > Formulários**, abra a aba **RD CRM**, escolha funil, etapa e responsável, defina o título e mapeie obrigatoriamente nome e e-mail.
 4. Use `name`, `email`, `phone` e `job_title` nos campos padrão de contato. Para campos personalizados de contato ou negociação, use `custom:ID_DO_CAMPO`.
 
+Se **Testar conexão** ou os catálogos falharem, o painel mostra a operação, o status HTTP e o detalhe retornado pelo RD CRM. Consulte **Contatos > Logs** para o registro da falha (com o registro de eventos habilitado). Um `refresh_token` expirado ou revogado exige reconectar a integração em **Contatos > Configurações > Integrações**. As seleções de funil, etapa, responsável e mapeamentos já salvos são preservadas enquanto o catálogo estiver indisponível.
+
 O access token é renovado automaticamente antes da expiração e uma resposta HTTP 401 provoca um único refresh e reenvio. Em cada envio, o plugin busca o contato pelo e-mail exato, atualiza ou cria o contato e abre uma negociação `ongoing` associada. Falhas ficam disponíveis no histórico de entregas para tentativa manual; como a API não fornece idempotência adequada a esse fluxo, uma resposta perdida após uma criação remota pode excepcionalmente causar duplicidade.
