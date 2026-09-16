@@ -39,7 +39,7 @@ class WPFV_Settings {
 			'email_block_enabled' => false,
 			'email_block_domains' => array( 'gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'live.com', 'icloud.com', 'uol.com.br', 'terra.com.br', 'bol.com.br', 'ig.com.br' ),
 			'email_block_suffixes' => array( '.ru', '.online', '.xyz' ),
-			'email_block_words' => array( 'teste', 'malware', 'phish' ),
+			'email_block_words' => array( 'teste' ),
 			'email_msg_domains' => 'E-mails de domínio público não são permitidos. Por favor, use um e-mail corporativo.',
 			'email_msg_suffixes' => 'O domínio do seu e-mail não é permitido. Por favor, use um e-mail corporativo.',
 			'email_msg_words' => 'O endereço de e-mail informado não é válido. Por favor, use um e-mail corporativo.',
@@ -94,6 +94,9 @@ class WPFV_Settings {
 		}
 
 		$saved = isset( $all[ $form_id ] ) && is_array( $all[ $form_id ] ) ? $all[ $form_id ] : array();
+		if ( isset( $saved['validation']['email_block_words'] ) && array( 'teste', 'malware', 'phish' ) === $saved['validation']['email_block_words'] ) {
+			$saved['validation']['email_block_words'] = self::validation_defaults()['email_block_words'];
+		}
 
 		$settings = array_merge( $defaults, $saved );
 		$settings['validation'] = array_merge( self::validation_defaults(), isset( $saved['validation'] ) && is_array( $saved['validation'] ) ? $saved['validation'] : array() );

@@ -28,6 +28,21 @@
 		}
 	}
 
+	document.querySelectorAll( '.wpfv-copy-subject-token' ).forEach( function ( button ) {
+		button.addEventListener( 'click', function () {
+			const status = document.querySelector( '.wpfv-copy-subject-status' );
+			if ( ! navigator.clipboard || ! navigator.clipboard.writeText ) {
+				if ( status ) status.textContent = 'Cópia indisponível. Selecione a variável para copiar.';
+				return;
+			}
+			navigator.clipboard.writeText( button.dataset.token ).then( function () {
+				if ( status ) status.textContent = button.dataset.token + ' copiado.';
+			} ).catch( function () {
+				if ( status ) status.textContent = 'Não foi possível copiar. Selecione a variável para copiar.';
+			} );
+		} );
+	} );
+
 	document.querySelectorAll( '.wpfv-field-mapping' ).forEach( function ( mapping ) {
 		const body = mapping.querySelector( 'tbody' );
 		const template = mapping.querySelector( '.wpfv-mapping-template' );
