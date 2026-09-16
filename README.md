@@ -2,6 +2,10 @@
 
 Plugin WordPress para registrar, validar e armazenar contatos enviados por formulários criados em código. E-mail e webhook são integrações principais; Pipedrive e Brevo são opcionais.
 
+## Gerar o ZIP para instalação
+
+Após fazer o commit das alterações, execute `./package.sh` na raiz do repositório. O script cria `wp-formvault-VERSÃO.zip` com a pasta interna `wp-formvault/`, usando apenas os arquivos do commit atual. O ZIP não inclui `.git`, o script de empacotamento nem os arquivos de configuração do Git.
+
 ## Implementação de um formulário
 
 ### 1. Registrar o esquema
