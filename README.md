@@ -84,6 +84,8 @@ Para habilitar o Google Cloud reCAPTCHA baseado em pontuação:
 3. Em **Contatos > Configurações > Antispam**, informe Project ID, site key e API key.
 4. Em **Contatos > Formulários**, abra a aba **Antispam**, habilite o reCAPTCHA e comece com score mínimo `0.5`.
 
+Em **Configurações > Antispam**, o botão **Testar conexão** consulta a API com as credenciais já salvas e um token deliberadamente inválido. Um retorno de token inválido confirma o acesso do servidor à API; o teste não valida o JavaScript, o domínio nem o score de um envio real. Cada clique faz uma avaliação no Google e pode contar na cota. O campo **API key** exige uma chave de API do Google Cloud vinculada ao Project ID, não a chave secreta legada exibida para integrações de terceiros.
+
 Envios abaixo do score, com token inválido ou com erro permanente de configuração são armazenados com status **Spam** e não acionam e-mail, webhook ou CRM. O visitante recebe a mesma confirmação neutra de um envio legítimo. Um administrador pode revisar o registro e usar **Aprovar como legítimo** para liberar as integrações. O spam é excluído automaticamente após 90 dias.
 
 Falhas transitórias de rede, HTTP 429 ou erros 5xx do Google usam somente as proteções locais e aparecem como estado degradado no painel. Erros de credencial colocam o envio em quarentena para não desabilitar a proteção silenciosamente. Valide primeiro em homologação e monitore a distribuição dos scores por 7–14 dias antes de tornar o limiar mais rigoroso.

@@ -18,6 +18,49 @@ class WPFV_Recaptcha {
 		return ! empty( $settings['recaptcha_project_id'] ) && ! empty( $settings['recaptcha_site_key'] ) && ! empty( $settings['recaptcha_api_key'] );
 	}
 
+	/**
+	 * Check the saved server credentials without submitting a form.
+	 * A deliberately invalid token should yield a successful assessment with
+	 * tokenProperties.valid=false. This checks API access, not browser execution.
+	 *
+	 * @return array{success:bool,message:string}
+	 */
+	public function test_connection() {
+		if ( ! self::configured() ) {
+			return array( 'success' => false, 'message' => __( 'Preencha e salve Project ID, Site key e API key antes de testar.', 'wp-formvault' ) );
+		}
+
+		$settings = WPFV_Settings::get_global();
+		$url = sprintf( 'https://recaptchaenterprise.googleapis.com/v1/projects/%s/assessments', rawurlencode( $settings['recaptcha_project_id'] ) );
+		$response = wp_remote_post( $url, array(
+			'timeout' => 8,
+			'headers' => array(
+				'Content-Type' => 'application/json; charset=utf-8',
+				'X-Goog-Api-Key' => $settings['recaptcha_api_key'],
+			),
+			'body' => wp_json_encode( array( 'event' => array(
+				'token' => 'wpfv_connection_test',
+				'siteKey' => $settings['recaptcha_site_key'],
+				'expectedAction' => 'wpfv_connection_test',
+			) ) ),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			return array( 'success' => false, 'message' => __( 'Falha de rede ao consultar o Google: ', 'wp-formvault' ) . sanitize_text_field( $response->get_error_message() ) );
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( $code >= 200 && $code < 300 && is_array( $body ) && isset( $body['tokenProperties'] ) && is_array( $body['tokenProperties'] ) && isset( $body['tokenProperties']['valid'] ) && false === $body['tokenProperties']['valid'] ) {
+			$this->save_health( 'success', __( 'O Google aceitou as credenciais salvas no teste. Faça um envio real para verificar o formulário.', 'wp-formvault' ), '' );
+			return array( 'success' => true, 'message' => __( 'O Google aceitou a API key e o projeto. O token de teste foi rejeitado como esperado; faça um envio real para verificar o formulário.', 'wp-formvault' ) );
+		}
+		if ( $code < 200 || $code >= 300 ) {
+			return array( 'success' => false, 'message' => $this->provider_error_detail( $code, $body, $settings, 'wpfv_connection_test' ) );
+		}
+		return array( 'success' => false, 'message' => __( 'O Google respondeu, mas não confirmou o resultado esperado do token de teste.', 'wp-formvault' ) );
+	}
+
 	/** Return the stable action name used on the client and server. */
 	public static function action_name( $form_id ) {
 		$form_id = sanitize_key( $form_id );
