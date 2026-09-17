@@ -91,7 +91,7 @@ class WPFV_Recaptcha {
 			return $this->unavailable( 'provider_unavailable', 'HTTP ' . $code );
 		}
 		if ( in_array( $code, array( 400, 401, 403 ), true ) ) {
-			return $this->configuration_error( 'provider_configuration', 'HTTP ' . $code );
+			return $this->configuration_error( 'provider_configuration', $this->provider_error_detail( $code, $body ) );
 		}
 		if ( $code < 200 || $code >= 300 || ! is_array( $body ) ) {
 			return $this->spam( 'invalid_response' );
@@ -149,6 +149,25 @@ class WPFV_Recaptcha {
 		return array_values( array_filter( $sanitized ) );
 	}
 
+	/** Keep only diagnostic codes from Google; never store the response message or credentials. */
+	private function provider_error_detail( $code, $body ) {
+		$parts = array( 'HTTP ' . (int) $code );
+		$error = is_array( $body ) && isset( $body['error'] ) && is_array( $body['error'] ) ? $body['error'] : array();
+		if ( isset( $error['status'] ) && is_scalar( $error['status'] ) && preg_match( '/^[A-Z][A-Z_]{1,63}$/', (string) $error['status'] ) ) {
+			$parts[] = (string) $error['status'];
+		}
+		if ( isset( $error['details'] ) && is_array( $error['details'] ) ) {
+			foreach ( $error['details'] as $item ) {
+				$reason = is_array( $item ) && isset( $item['reason'] ) && is_scalar( $item['reason'] ) ? (string) $item['reason'] : '';
+				if ( preg_match( '/^[A-Z][A-Z0-9_]{1,63}$/', $reason ) ) {
+					$parts[] = $reason;
+					break;
+				}
+			}
+		}
+		return implode( ' · ', array_unique( $parts ) );
+	}
+
 	private function spam( $reason ) {
 		return array(
 			'decision'  => 'spam',
@@ -168,7 +187,7 @@ class WPFV_Recaptcha {
 		$this->save_health( 'error', __( 'O reCAPTCHA não pôde validar envios. Revise as credenciais e a configuração do projeto.', 'wp-formvault' ), $detail );
 		return array(
 			'decision'  => 'spam',
-			'risk_data' => array( 'provider' => 'google_recaptcha', 'reason' => sanitize_key( $reason ), 'score' => null, 'reasons' => array() ),
+			'risk_data' => array( 'provider' => 'google_recaptcha', 'reason' => sanitize_key( $reason ), 'score' => null, 'reasons' => array(), 'provider_detail' => sanitize_text_field( $detail ) ),
 		);
 	}
 

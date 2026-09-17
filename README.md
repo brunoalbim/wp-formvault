@@ -88,6 +88,8 @@ Envios abaixo do score, com token inválido ou com erro permanente de configura�
 
 Falhas transitórias de rede, HTTP 429 ou erros 5xx do Google usam somente as proteções locais e aparecem como estado degradado no painel. Erros de credencial colocam o envio em quarentena para não desabilitar a proteção silenciosamente. Valide primeiro em homologação e monitore a distribuição dos scores por 7–14 dias antes de tornar o limiar mais rigoroso.
 
+Quando a API do Google devolver HTTP 400, 401 ou 403, o diagnóstico com o status HTTP e os códigos de erro aparecerá em **Contatos > Configurações > Antispam** e no detalhe dos novos envios em quarentena. O plugin não registra a mensagem bruta da API nem as credenciais.
+
 Se o site usa Content Security Policy, adicione `https://www.google.com/recaptcha/` e `https://www.gstatic.com/recaptcha/` a `script-src`, `https://www.google.com/recaptcha/` e `https://recaptcha.google.com/recaptcha/` a `frame-src`, e `https://www.google.com/recaptcha/` a `connect-src`. Revise também a política de privacidade do site antes da ativação.
 
 ## Payload do webhook
