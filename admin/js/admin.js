@@ -210,6 +210,25 @@
 	const rdOwner = document.getElementById( 'wpfv-rdcrm-owner' );
 	const rdStatus = document.getElementById( 'wpfv-rdcrm-catalog-status' );
 	const rdCatalogReady = document.getElementById( 'wpfv-rdcrm-catalog-ready' );
+	const rdRefresh = document.getElementById( 'wpfv-rdcrm-refresh-catalogs' );
+	if ( rdRefresh ) {
+		rdRefresh.addEventListener( 'click', function () {
+			if ( ! window.confirm( 'A página será recarregada. Salve as alterações do formulário antes de atualizar os dados do RD CRM. Deseja continuar?' ) ) return;
+			rdRefresh.disabled = true;
+			if ( rdStatus ) rdStatus.textContent = 'Atualizando listas do RD CRM…';
+			const body = new URLSearchParams( { action: 'wpfv_rdcrm_refresh_catalogs', _ajax_nonce: window.wpfvAdmin.nonce } );
+			fetch( window.wpfvAdmin.ajaxUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body.toString(), credentials: 'same-origin' } )
+				.then( function ( response ) { return response.json(); } )
+				.then( function ( response ) {
+					if ( ! response.success ) throw new Error( response.data && response.data.message ? response.data.message : 'Não foi possível atualizar as listas.' );
+					window.location.reload();
+				} )
+				.catch( function ( error ) {
+					if ( rdStatus ) rdStatus.textContent = error.message;
+					rdRefresh.disabled = false;
+				} );
+		} );
+	}
 	let rdBaseLoaded = false;
 	let rdFieldsLoaded = false;
 	let rdHasError = false;
