@@ -129,6 +129,8 @@ Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo 
 
 A empresa só é consultada quando o campo **Nome da empresa** está mapeado e preenchido no envio. O plugin procura uma empresa com o mesmo nome exato, atualiza seus outros campos mapeados ou cria uma nova empresa e associa seu ID ao contato e à negociação. Sem nome de empresa, o fluxo continua sem consultar nem cadastrar empresas.
 
+Se a conta do RD CRM exigir campos personalizados de empresa, mapeie também esses campos e garanta que o formulário envie valores válidos. O catálogo indica os campos obrigatórios quando a API informa essa propriedade; em erros HTTP 422 de campo obrigatório, o plugin consulta o identificador retornado pelo RD CRM para mostrar o nome e o slug do campo na falha de entrega.
+
 Se **Testar conexão** ou os catálogos falharem, o painel mostra a operação, o status HTTP e o detalhe retornado pelo RD CRM. Consulte **Contatos > Logs** para o registro da falha (com o registro de eventos habilitado). Um `refresh_token` expirado ou revogado exige reconectar a integração em **Contatos > Configurações > Integrações**. As seleções de funil, etapa, responsável e mapeamentos já salvos são preservadas enquanto o catálogo estiver indisponível.
 
 O plugin agenda uma verificação diária pelo WP-Cron para renovar o token mesmo sem novos envios. O WP-Cron executa tarefas quando há visitas ao site; se estiver desativado ou o site passar muitos dias sem visitas, configure uma chamada ao `wp-cron.php` pelo agendador do servidor. Depois de reconectar uma integração com token inválido, use **Testar conexão** para confirmar o acesso.

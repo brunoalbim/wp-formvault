@@ -666,6 +666,8 @@ class WPFV_Admin {
 			$id = isset( $item['id'] ) ? (string) $item['id'] : '';
 			$slug = isset( $item['slug'] ) ? (string) $item['slug'] : $id;
 			$label = isset( $item['name'] ) ? $item['name'] : ( isset( $item['label'] ) ? $item['label'] : $slug );
+			$required = ( isset( $item['required'] ) && in_array( $item['required'], array( true, 1, '1' ), true ) ) || ( isset( $item['is_required'] ) && in_array( $item['is_required'], array( true, 1, '1' ), true ) );
+			if ( $required && 'fields' === $catalog ) $label .= ' (obrigatório)';
 			if ( $id ) $items[] = array( 'value' => 'fields' === $catalog ? 'custom:' . $slug : $id, 'legacy_value' => 'fields' === $catalog ? 'custom:' . $id : $id, 'label' => $label );
 		}
 		wp_send_json_success( array( 'items' => $items ) );

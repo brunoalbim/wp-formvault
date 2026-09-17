@@ -32,7 +32,7 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 		if(empty($find['success']))return array('success'=>false,'response'=>$find);
 		$id=$this->exact_organization_id($find,$name);
 		if($id){
-			if(count($data)>1){$update=$api->update_organization($id,$data);if(empty($update['success']))return array('success'=>false,'response'=>$update);}
+			if(count($data)>1){$update=$api->update_organization($id,$data);if(empty($update['success']))return array('success'=>false,'response'=>$this->organization_error($api,$update,$data));}
 			return array('success'=>true,'id'=>$id);
 		}
 		$create=$api->create_organization($data);
@@ -42,11 +42,27 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 			$refind=$api->find_organization($name);
 			if(empty($refind['success']))return array('success'=>false,'response'=>$refind);
 			$id=$this->exact_organization_id($refind,$name);
-			if($id&&empty($create['success'])&&count($data)>1){$update=$api->update_organization($id,$data);if(empty($update['success']))return array('success'=>false,'response'=>$update);}
+			if($id&&empty($create['success'])&&count($data)>1){$update=$api->update_organization($id,$data);if(empty($update['success']))return array('success'=>false,'response'=>$this->organization_error($api,$update,$data));}
 		}
-		if(!$id&&empty($create['success']))return array('success'=>false,'response'=>$create);
+		if(!$id&&empty($create['success']))return array('success'=>false,'response'=>$this->organization_error($api,$create,$data));
 		if(!$id)return array('success'=>false,'response'=>$this->result(false,isset($create['code'])?$create['code']:0,array(),'O RD CRM não retornou o identificador da empresa criada ou existente. O contato e a negociação não foram enviados.'));
 		return array('success'=>true,'id'=>$id);
+	}
+	private function organization_error($api,$response,$data){
+		$error=isset($response['error'])?(string)$response['error']:'';
+		if(422!==(int)(isset($response['code'])?$response['code']:0)||false===strpos($error,'Organization required custom fields'))return $response;
+		if(!preg_match_all('/BSON::ObjectId\\([^)]*?([0-9a-f]{24})[^)]*\\)/i',$error,$matches))return $response;
+		$details=array();
+		foreach(array_unique($matches[1]) as $id){
+			$field_result=$api->get_custom_field($id);
+			$field=!empty($field_result['success'])?$this->payload($field_result):array();
+			$label=isset($field['name'])?sanitize_text_field($field['name']):(isset($field['label'])?sanitize_text_field($field['label']):$id);
+			$slug=isset($field['slug'])?(string)$field['slug']:'';
+			$filled=$slug&&isset($data['custom_fields'][$slug])&&''!==trim((string)$data['custom_fields'][$slug]);
+			$details[]=$label.($slug?' ('.$slug.')':'').' [ID '.$id.']'.($filled?' recebeu um valor que o RD CRM rejeitou. Verifique o formato e as opções aceitas.':' precisa estar mapeado em Empresa e preenchido no formulário.');
+		}
+		$response['error']='RD CRM: campo personalizado obrigatório de empresa: '.implode(' ',$details).' Você também pode retirar a obrigatoriedade desse campo no RD CRM. Detalhe original: '.$error;
+		return $response;
 	}
 	private function exact_organization_id($response,$name){return $this->organization_id_in($this->payload($response),$name);}
 	private function organization_id_in($data,$name){if(!is_array($data))return '';if(isset($data['name'],$data['id'])&&is_scalar($data['name'])&&is_scalar($data['id'])&&trim((string)$data['name'])===$name)return (string)$data['id'];foreach($data as $value){$id=$this->organization_id_in($value,$name);if($id)return $id;}return '';}
