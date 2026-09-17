@@ -55,10 +55,27 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 		$details=array();
 		$catalog=$api->custom_fields('organization');
 		$available=!empty($catalog['success'])?$this->payload($catalog):array();
+		$required=$api->required_custom_fields('organization');
+		$known=!empty($required['success'])&&!empty($required['data']['data'])?$this->payload($required):$available;
+		$known_labels=array();
+		foreach((array)$known as $candidate){
+			if(!is_array($candidate)||empty($candidate['id']))continue;
+			$name=isset($candidate['name'])?$candidate['name']:(isset($candidate['label'])?$candidate['label']:'Campo sem nome');
+			$known_labels[]=sanitize_text_field($name).' [ID '.(string)$candidate['id'].']';
+		}
 		foreach(array_unique($matches[1]) as $id){
 			$field=array();
-			foreach((array)$available as $candidate){if(is_array($candidate)&&isset($candidate['id'])&&(string)$candidate['id']===$id){$field=$candidate;break;}}
+			foreach((array)$available as $candidate){
+				if(!is_array($candidate))continue;
+				foreach(array('id','_id','custom_field_id') as $key){if(isset($candidate[$key])&&(string)$candidate[$key]===$id){$field=$candidate;break 2;}}
+			}
 			if(!$field){$field_result=$api->get_custom_field($id);$field=!empty($field_result['success'])?$this->payload($field_result):array();}
+			if(isset($field['custom_field'])&&is_array($field['custom_field']))$field=$field['custom_field'];
+			if(!$field||(!isset($field['name'])&&!isset($field['label']))){
+				$lookup_code=isset($field_result['code'])?(int)$field_result['code']:0;
+				$details[]='O ID '.$id.' não foi identificado no catálogo de empresa desta conexão'.($lookup_code?' (consulta por ID: HTTP '.$lookup_code.')':'').'.'.($known_labels?' Campos retornados pela API: '.implode(', ',array_slice($known_labels,0,12)).'.':' O catálogo não retornou campos para comparação.').' Confirme se o plugin está conectado à mesma conta exibida no painel do RD CRM.';
+				continue;
+			}
 			$label=isset($field['name'])?sanitize_text_field($field['name']):(isset($field['label'])?sanitize_text_field($field['label']):$id);
 			$slug=isset($field['slug'])?(string)$field['slug']:'';
 			$mapped=$slug&&isset($data['custom_fields'][$slug])?$data['custom_fields'][$slug]:null;

@@ -117,7 +117,12 @@ class WPFV_RDCRM_API {
 	public function stages( $id ) { return $this->request( 'GET', 'pipelines/' . rawurlencode( (string) $id ) . '/stages' ); }
 	public function users() { return $this->request( 'GET', 'users' ); }
 	public function custom_fields( $entity ) { return $this->request( 'GET', 'custom_fields', array(), array( 'filter' => 'entity:' . $entity ) ); }
-	public function required_custom_fields( $entity ) { return $this->request( 'GET', 'custom_fields', array(), array( 'filter' => 'entity:' . $entity . ' is:required' ) ); }
+	public function required_custom_fields( $entity ) {
+		$result = $this->request( 'GET', 'custom_fields', array(), array( 'filter' => 'entity:' . $entity . ' is:required:true' ) );
+		if ( ! empty( $result['success'] ) && ! empty( $result['data']['data'] ) ) return $result;
+		$fallback = $this->request( 'GET', 'custom_fields', array(), array( 'filter' => 'entity:' . $entity . ' is:required' ) );
+		return ! empty( $fallback['success'] ) && ! empty( $fallback['data']['data'] ) ? $fallback : $result;
+	}
 	public function get_custom_field( $id ) { return $this->request( 'GET', 'custom_fields/' . rawurlencode( (string) $id ) ); }
 	public function find_contact( $email ) { return $this->request( 'GET', 'contacts', array(), array( 'filter' => 'email:' . $email ) ); }
 	public function create_contact( $data ) { return $this->request( 'POST', 'contacts', $data ); }

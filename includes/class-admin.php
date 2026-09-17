@@ -659,13 +659,15 @@ class WPFV_Admin {
 		}
 		$raw = isset( $result['data']['data'] ) && is_array( $result['data']['data'] ) ? $result['data']['data'] : array();
 		$required_ids = array();
+		$required_slugs = array();
 		$required_warning = '';
-		if ( 'fields' === $catalog && 'organization' === $entity ) {
-			$required_result = $api->required_custom_fields( 'organization' );
-			if ( empty( $required_result['success'] ) ) $required_warning = 'Não foi possível verificar quais campos da empresa são obrigatórios no RD CRM. Confira as exigências no painel do CRM antes de salvar o mapeamento.';
+		if ( 'fields' === $catalog && in_array( $entity, array( 'contact', 'organization', 'deal' ), true ) ) {
+			$required_result = $api->required_custom_fields( $entity );
+			if ( empty( $required_result['success'] ) ) $required_warning = 'Não foi possível verificar quais campos personalizados são obrigatórios no RD CRM. Confira as exigências no painel do CRM antes de salvar o mapeamento.';
 			$required_raw = ! empty( $required_result['success'] ) && isset( $required_result['data']['data'] ) && is_array( $required_result['data']['data'] ) ? $required_result['data']['data'] : array();
 			foreach ( $required_raw as $required_item ) {
 				if ( is_array( $required_item ) && ! empty( $required_item['id'] ) ) $required_ids[ (string) $required_item['id'] ] = true;
+				if ( is_array( $required_item ) && ! empty( $required_item['slug'] ) ) $required_slugs[ (string) $required_item['slug'] ] = true;
 			}
 		}
 		$items = array();
@@ -676,7 +678,7 @@ class WPFV_Admin {
 			$id = isset( $item['id'] ) ? (string) $item['id'] : '';
 			$slug = isset( $item['slug'] ) ? (string) $item['slug'] : $id;
 			$label = isset( $item['name'] ) ? $item['name'] : ( isset( $item['label'] ) ? $item['label'] : $slug );
-			$required = isset( $required_ids[ $id ] ) || ( isset( $item['required'] ) && in_array( $item['required'], array( true, 1, '1' ), true ) ) || ( isset( $item['is_required'] ) && in_array( $item['is_required'], array( true, 1, '1' ), true ) );
+			$required = isset( $required_ids[ $id ] ) || isset( $required_slugs[ $slug ] ) || ( isset( $item['required'] ) && in_array( $item['required'], array( true, 1, '1' ), true ) ) || ( isset( $item['is_required'] ) && in_array( $item['is_required'], array( true, 1, '1' ), true ) );
 			if ( $required && 'fields' === $catalog ) $label .= ' (obrigatório)';
 			if ( $id ) $items[] = array( 'value' => 'fields' === $catalog ? 'custom:' . $slug : $id, 'legacy_value' => 'fields' === $catalog ? 'custom:' . $id : $id, 'label' => $label );
 		}
