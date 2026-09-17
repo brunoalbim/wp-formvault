@@ -9,7 +9,7 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 		$organization_id='';$organization_name=isset($data['organization']['name'])?trim($data['organization']['name']):'';
 		if(''!==$organization_name){
 			$data['organization']['name']=$organization_name;
-			$organization=$this->sync_organization($api,$data['organization']);
+			$organization=$this->sync_organization($api,$data['organization'],$data['deal']['owner_id']);
 			if(empty($organization['success']))return $this->from_api($organization['response'],array('operation'=>'organization'));
 			$organization_id=$organization['id'];
 			$data['contact']['organization_id']=$organization_id;
@@ -27,7 +27,7 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 		if(!in_array((string)$contact_id,$linked,true))return $this->result(false,isset($check['code'])?$check['code']:0,$ids,'A negociação foi criada, mas o RD CRM não confirmou o vínculo com o contato. Consulte os dados de diagnóstico desta entrega.');
 		return $this->from_api($deal,$ids);
 	}
-	private function sync_organization($api,$data){
+	private function sync_organization($api,$data,$default_owner_id){
 		$name=$data['name'];$find=$api->find_organization($name);
 		if(empty($find['success']))return array('success'=>false,'response'=>$find);
 		$id=$this->exact_organization_id($find,$name);
@@ -35,7 +35,9 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 			if(count($data)>1){$update=$api->update_organization($id,$data);if(empty($update['success']))return array('success'=>false,'response'=>$this->organization_error($api,$update,$data));}
 			return array('success'=>true,'id'=>$id);
 		}
-		$create=$api->create_organization($data);
+		$create_data=$data;
+		if(empty($create_data['owner_id']))$create_data['owner_id']=(string)$default_owner_id;
+		$create=$api->create_organization($create_data);
 		if(empty($create['success'])&&422!==(int)(isset($create['code'])?$create['code']:0))return array('success'=>false,'response'=>$create);
 		$id=!empty($create['success'])?$this->id($create):'';
 		if(!$id){
