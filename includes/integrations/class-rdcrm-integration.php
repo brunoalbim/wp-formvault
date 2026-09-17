@@ -53,12 +53,16 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 		if(422!==(int)(isset($response['code'])?$response['code']:0)||false===strpos($error,'Organization required custom fields'))return $response;
 		if(!preg_match_all('/BSON::ObjectId\\([^)]*?([0-9a-f]{24})[^)]*\\)/i',$error,$matches))return $response;
 		$details=array();
+		$catalog=$api->custom_fields('organization');
+		$available=!empty($catalog['success'])?$this->payload($catalog):array();
 		foreach(array_unique($matches[1]) as $id){
-			$field_result=$api->get_custom_field($id);
-			$field=!empty($field_result['success'])?$this->payload($field_result):array();
+			$field=array();
+			foreach((array)$available as $candidate){if(is_array($candidate)&&isset($candidate['id'])&&(string)$candidate['id']===$id){$field=$candidate;break;}}
+			if(!$field){$field_result=$api->get_custom_field($id);$field=!empty($field_result['success'])?$this->payload($field_result):array();}
 			$label=isset($field['name'])?sanitize_text_field($field['name']):(isset($field['label'])?sanitize_text_field($field['label']):$id);
 			$slug=isset($field['slug'])?(string)$field['slug']:'';
-			$filled=$slug&&isset($data['custom_fields'][$slug])&&''!==trim((string)$data['custom_fields'][$slug]);
+			$mapped=$slug&&isset($data['custom_fields'][$slug])?$data['custom_fields'][$slug]:null;
+			$filled=is_array($mapped)?!empty($mapped):(is_scalar($mapped)&&''!==trim((string)$mapped));
 			$details[]=$label.($slug?' ('.$slug.')':'').' [ID '.$id.']'.($filled?' recebeu um valor que o RD CRM rejeitou. Verifique o formato e as opções aceitas.':' precisa estar mapeado em Empresa e preenchido no formulário.');
 		}
 		$response['error']='RD CRM: campo personalizado obrigatório de empresa: '.implode(' ',$details).' Você também pode retirar a obrigatoriedade desse campo no RD CRM. Detalhe original: '.$error;

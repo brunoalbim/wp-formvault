@@ -448,7 +448,7 @@ class WPFV_Admin {
 						<p><label><input type="checkbox" name="rdcrm_enabled" value="1" <?php checked($settings['rdcrm_enabled']); ?>> Habilitar integração com o RD CRM</label></p><input type="hidden" name="rdcrm_catalog_ready" id="wpfv-rdcrm-catalog-ready" value="0">
 						<div class="wpfv-inline-fields"><label>Funil <select id="wpfv-rdcrm-pipeline" name="rdcrm_pipeline_id" data-selected="<?php echo esc_attr($settings['rdcrm_pipeline_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_pipeline_id']); ?>">— <?php echo $settings['rdcrm_pipeline_id'] ? 'Funil salvo; carregando' : 'Carregando'; ?> —</option></select></label><label>Etapa <select id="wpfv-rdcrm-stage" name="rdcrm_stage_id" data-selected="<?php echo esc_attr($settings['rdcrm_stage_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_stage_id']); ?>">— <?php echo $settings['rdcrm_stage_id'] ? 'Etapa salva; carregando' : 'Selecione o funil'; ?> —</option></select></label><label>Responsável <select id="wpfv-rdcrm-owner" name="rdcrm_owner_id" data-selected="<?php echo esc_attr($settings['rdcrm_owner_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_owner_id']); ?>">— <?php echo $settings['rdcrm_owner_id'] ? 'Responsável salvo; carregando' : 'Carregando'; ?> —</option></select></label></div>
 						<p id="wpfv-rdcrm-catalog-status" class="wpfv-connection-status" role="status"></p><p><label for="wpfv-rdcrm-deal-title"><strong>Título da negociação</strong></label><br><input id="wpfv-rdcrm-deal-title" class="large-text" type="text" name="rdcrm_deal_title" value="<?php echo esc_attr($settings['rdcrm_deal_title']); ?>"></p>
-					</div></div><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do RD CRM</h2><p>Nome e e-mail do contato são obrigatórios. A empresa só é consultada ou cadastrada quando o nome da empresa está mapeado e preenchido.</p></div><div class="wpfv-card-body"><?php $this->rdcrm_rows($settings['rdcrm_field_map'],$form); ?></div></div>
+					</div></div><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do RD CRM</h2><p>Nome e e-mail do contato são obrigatórios. A empresa só é consultada ou cadastrada quando o nome da empresa está mapeado e preenchido. Campos de empresa obrigatórios no RD CRM também precisam ser mapeados e preenchidos.</p></div><div class="wpfv-card-body"><?php $this->rdcrm_rows($settings['rdcrm_field_map'],$form); ?></div></div>
 				</section>
 				<?php endif; ?>
 
@@ -658,6 +658,16 @@ class WPFV_Admin {
 			wp_send_json_error( array( 'message' => $result['error'] ) );
 		}
 		$raw = isset( $result['data']['data'] ) && is_array( $result['data']['data'] ) ? $result['data']['data'] : array();
+		$required_ids = array();
+		$required_warning = '';
+		if ( 'fields' === $catalog && 'organization' === $entity ) {
+			$required_result = $api->required_custom_fields( 'organization' );
+			if ( empty( $required_result['success'] ) ) $required_warning = 'Não foi possível verificar quais campos da empresa são obrigatórios no RD CRM. Confira as exigências no painel do CRM antes de salvar o mapeamento.';
+			$required_raw = ! empty( $required_result['success'] ) && isset( $required_result['data']['data'] ) && is_array( $required_result['data']['data'] ) ? $required_result['data']['data'] : array();
+			foreach ( $required_raw as $required_item ) {
+				if ( is_array( $required_item ) && ! empty( $required_item['id'] ) ) $required_ids[ (string) $required_item['id'] ] = true;
+			}
+		}
 		$items = array();
 		if ( 'fields' === $catalog && 'contact' === $entity ) $items = array( array( 'value' => 'name', 'label' => 'Nome' ), array( 'value' => 'email', 'label' => 'E-mail' ), array( 'value' => 'phone', 'label' => 'Telefone' ), array( 'value' => 'job_title', 'label' => 'Cargo' ) );
 		if ( 'fields' === $catalog && 'organization' === $entity ) $items = array( array( 'value' => 'name', 'label' => 'Nome da empresa' ), array( 'value' => 'description', 'label' => 'Descrição' ), array( 'value' => 'url', 'label' => 'Site (URL)' ), array( 'value' => 'address.line', 'label' => 'Endereço' ) );
@@ -666,11 +676,11 @@ class WPFV_Admin {
 			$id = isset( $item['id'] ) ? (string) $item['id'] : '';
 			$slug = isset( $item['slug'] ) ? (string) $item['slug'] : $id;
 			$label = isset( $item['name'] ) ? $item['name'] : ( isset( $item['label'] ) ? $item['label'] : $slug );
-			$required = ( isset( $item['required'] ) && in_array( $item['required'], array( true, 1, '1' ), true ) ) || ( isset( $item['is_required'] ) && in_array( $item['is_required'], array( true, 1, '1' ), true ) );
+			$required = isset( $required_ids[ $id ] ) || ( isset( $item['required'] ) && in_array( $item['required'], array( true, 1, '1' ), true ) ) || ( isset( $item['is_required'] ) && in_array( $item['is_required'], array( true, 1, '1' ), true ) );
 			if ( $required && 'fields' === $catalog ) $label .= ' (obrigatório)';
 			if ( $id ) $items[] = array( 'value' => 'fields' === $catalog ? 'custom:' . $slug : $id, 'legacy_value' => 'fields' === $catalog ? 'custom:' . $id : $id, 'label' => $label );
 		}
-		wp_send_json_success( array( 'items' => $items ) );
+		wp_send_json_success( array( 'items' => $items, 'warning' => $required_warning ) );
 	}
 
 	public function logs_page() {

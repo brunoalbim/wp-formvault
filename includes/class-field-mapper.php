@@ -72,10 +72,12 @@ class WPFV_Field_Mapper {
 			$target = isset( $row['target'] ) ? sanitize_text_field( $row['target'] ) : '';
 			if ( ! $source || ! isset( $fields[ $source ] ) || ! isset( $result[ $entity ] ) || ! $target || '' === $fields[ $source ] ) { continue; }
 			$value = is_array( $fields[ $source ] ) ? implode( ', ', $fields[ $source ] ) : sanitize_text_field( $fields[ $source ] );
+			$custom_value = is_array( $fields[ $source ] ) ? array_values( array_filter( array_map( 'sanitize_text_field', $fields[ $source ] ), 'strlen' ) ) : $value;
+			if ( 0 === strpos( $target, 'custom:' ) && ( array() === $custom_value || '' === $custom_value ) ) { continue; }
 			if ( 'contact' === $entity && 'email' === $target ) { $result['contact']['emails'] = array( array( 'email' => sanitize_email( $value ) ) ); }
 			elseif ( 'contact' === $entity && 'phone' === $target ) { $result['contact']['phones'] = array( array( 'phone' => $value, 'type' => 'work' ) ); }
 			elseif ( 'organization' === $entity && 'address.line' === $target ) { $result['organization']['address']['line'] = $value; }
-			elseif ( 0 === strpos( $target, 'custom:' ) ) { $result[ $entity ]['custom_fields'][ substr( $target, 7 ) ] = $value; }
+			elseif ( 0 === strpos( $target, 'custom:' ) ) { $result[ $entity ]['custom_fields'][ substr( $target, 7 ) ] = $custom_value; }
 			else { $result[ $entity ][ $target ] = $value; }
 		}
 		$result['deal']['name'] = $this->template( $settings['rdcrm_deal_title'], $fields );

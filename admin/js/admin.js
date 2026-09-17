@@ -201,6 +201,7 @@
 			} )
 			.then( function ( response ) {
 				if ( ! response.success ) throw new Error( response.data && response.data.message ? response.data.message : 'Falha ao consultar o RD CRM.' );
+				if ( response.data && response.data.warning ) rdMessage( response.data.warning, true );
 				return response.data.items || [];
 			} );
 	}
