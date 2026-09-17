@@ -448,7 +448,7 @@ class WPFV_Admin {
 						<p><label><input type="checkbox" name="rdcrm_enabled" value="1" <?php checked($settings['rdcrm_enabled']); ?>> Habilitar integração com o RD CRM</label></p><input type="hidden" name="rdcrm_catalog_ready" id="wpfv-rdcrm-catalog-ready" value="0">
 						<div class="wpfv-inline-fields"><label>Funil <select id="wpfv-rdcrm-pipeline" name="rdcrm_pipeline_id" data-selected="<?php echo esc_attr($settings['rdcrm_pipeline_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_pipeline_id']); ?>">— <?php echo $settings['rdcrm_pipeline_id'] ? 'Funil salvo; carregando' : 'Carregando'; ?> —</option></select></label><label>Etapa <select id="wpfv-rdcrm-stage" name="rdcrm_stage_id" data-selected="<?php echo esc_attr($settings['rdcrm_stage_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_stage_id']); ?>">— <?php echo $settings['rdcrm_stage_id'] ? 'Etapa salva; carregando' : 'Selecione o funil'; ?> —</option></select></label><label>Responsável <select id="wpfv-rdcrm-owner" name="rdcrm_owner_id" data-selected="<?php echo esc_attr($settings['rdcrm_owner_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_owner_id']); ?>">— <?php echo $settings['rdcrm_owner_id'] ? 'Responsável salvo; carregando' : 'Carregando'; ?> —</option></select></label></div>
 						<p id="wpfv-rdcrm-catalog-status" class="wpfv-connection-status" role="status"></p><p><label for="wpfv-rdcrm-deal-title"><strong>Título da negociação</strong></label><br><input id="wpfv-rdcrm-deal-title" class="large-text" type="text" name="rdcrm_deal_title" value="<?php echo esc_attr($settings['rdcrm_deal_title']); ?>"></p>
-					</div></div><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do RD CRM</h2><p>Nome e e-mail do contato são obrigatórios. A empresa só é consultada ou cadastrada quando o nome da empresa está mapeado e preenchido. Campos de empresa obrigatórios no RD CRM também precisam ser mapeados e preenchidos.</p></div><div class="wpfv-card-body"><?php $this->rdcrm_rows($settings['rdcrm_field_map'],$form); ?></div></div>
+					</div></div><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do RD CRM</h2><p>Nome e e-mail do contato são obrigatórios. A empresa só é consultada ou cadastrada quando o nome da empresa está mapeado e preenchido. Campos obrigatórios no RD CRM também precisam ser mapeados e preenchidos.</p></div><div class="wpfv-card-body"><?php $this->rdcrm_rows($settings['rdcrm_field_map'],$form); ?><p class="description">Se o formulário não tiver um campo correspondente, escolha “Valor fixo”. Para campos de seleção, use uma opção aceita pelo RD CRM.</p></div></div>
 				</section>
 				<?php endif; ?>
 
@@ -510,8 +510,17 @@ class WPFV_Admin {
 		echo '<td class="wpfv-mapping-actions"><button type="button" class="button-link-delete wpfv-remove-mapping" aria-label="Remover este mapeamento">Remover</button></td>';
 	}
 	private function pipedrive_rows( $rows, $form ) { $rows = $rows ? $rows : array(); echo '<table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário</th><th>Entidade</th><th>Campo no Pipedrive</th></tr></thead><tbody>'; $total=max( 6, count( $rows )+3 ); for($i=0;$i<$total;$i++){ $r=isset($rows[$i])?$rows[$i]:array(); echo '<tr><td><select name="pd_source[]"><option value="">— Selecione —</option>'; $this->field_options($form,isset($r['source'])?$r['source']:''); echo '</select></td><td><select name="pd_entity[]" class="wpfv-pd-entity"><option value="person" '.selected(isset($r['entity'])?$r['entity']:'person','person',false).'>Pessoa</option><option value="organization" '.selected(isset($r['entity'])?$r['entity']:'','organization',false).'>Empresa</option><option value="deal" '.selected(isset($r['entity'])?$r['entity']:'','deal',false).'>Negociação</option></select></td><td><select class="regular-text wpfv-pd-target" name="pd_target[]" data-selected="'.esc_attr(isset($r['target'])?$r['target']:'').'"><option value="'.esc_attr(isset($r['target'])?$r['target']:'').'">— Carregando campos —</option></select></td></tr>'; } echo '</tbody></table>'; }
-	private function rdcrm_rows($rows,$form){$rows=$rows?$rows:array(array());echo '<div class="wpfv-rd-mapping"><table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário</th><th>Entidade</th><th>Destino no RD CRM</th><th>Ações</th></tr></thead><tbody>';foreach($rows as $r){echo '<tr>';$this->rdcrm_cells($r,$form);echo '</tr>';}echo '</tbody></table><p><button type="button" class="button wpfv-add-rd-mapping">Adicionar campo</button></p><template class="wpfv-rd-template"><tr>';$this->rdcrm_cells(array(),$form);echo '</tr></template></div>';}
-	private function rdcrm_cells($r,$form){echo '<td><select name="rd_source[]" class="wpfv-rd-source"><option value="">— Selecione —</option>';$this->field_options($form,isset($r['source'])?$r['source']:'');echo '</select></td><td><select name="rd_entity[]" class="wpfv-rd-entity"><option value="contact" '.selected(isset($r['entity'])?$r['entity']:'contact','contact',false).'>Contato</option><option value="organization" '.selected(isset($r['entity'])?$r['entity']:'','organization',false).'>Empresa</option><option value="deal" '.selected(isset($r['entity'])?$r['entity']:'','deal',false).'>Negociação</option></select></td><td><select class="regular-text wpfv-rd-target" name="rd_target[]" data-selected="'.esc_attr(isset($r['target'])?$r['target']:'').'"><option value="'.esc_attr(isset($r['target'])?$r['target']:'').'">— Carregando campos —</option></select></td><td><button type="button" class="button-link-delete wpfv-remove-rd-mapping">Remover</button></td>';}
+	private function rdcrm_rows($rows,$form){$rows=$rows?$rows:array(array());echo '<div class="wpfv-rd-mapping"><table class="widefat striped wpfv-mapping-table"><thead><tr><th>Campo do formulário ou valor fixo</th><th>Entidade</th><th>Destino no RD CRM</th><th>Ações</th></tr></thead><tbody>';foreach($rows as $r){echo '<tr>';$this->rdcrm_cells($r,$form);echo '</tr>';}echo '</tbody></table><p><button type="button" class="button wpfv-add-rd-mapping">Adicionar campo</button></p><template class="wpfv-rd-template"><tr>';$this->rdcrm_cells(array(),$form);echo '</tr></template></div>';}
+	private function rdcrm_cells($r,$form){
+		$source=isset($r['source'])?$r['source']:'';
+		$target=isset($r['target'])?$r['target']:'';
+		$fixed='__fixed__'===$source;
+		echo '<td><select name="rd_source[]" class="wpfv-rd-source" aria-label="Origem do mapeamento"><option value="">— Selecione —</option><option value="__fixed__" '.selected($source,'__fixed__',false).'>Valor fixo</option>';
+		$this->field_options($form,$source);
+		echo '</select><div class="wpfv-rd-fixed-controls"'.($fixed?'':' hidden').'><input class="regular-text wpfv-rd-fixed-value" type="text" name="rd_fixed_value[]" value="'.esc_attr(isset($r['fixed_value'])?$r['fixed_value']:'').'" placeholder="Valor enviado ao RD CRM" aria-label="Valor fixo"><label class="wpfv-rd-fixed-format"'.($fixed&&0===strpos($target,'custom:')?'':' hidden').'>Formato <select name="rd_fixed_list[]" class="wpfv-rd-fixed-list"><option value="0" '.selected(empty($r['fixed_list']),true,false).'>Valor simples</option><option value="1" '.selected(!empty($r['fixed_list']),true,false).'>Lista com um valor</option></select></label></div></td>';
+		echo '<td><select name="rd_entity[]" class="wpfv-rd-entity"><option value="contact" '.selected(isset($r['entity'])?$r['entity']:'contact','contact',false).'>Contato</option><option value="organization" '.selected(isset($r['entity'])?$r['entity']:'','organization',false).'>Empresa</option><option value="deal" '.selected(isset($r['entity'])?$r['entity']:'','deal',false).'>Negociação</option></select></td>';
+		echo '<td><select class="regular-text wpfv-rd-target" name="rd_target[]" data-selected="'.esc_attr($target).'"><option value="'.esc_attr($target).'">— Carregando campos —</option></select></td><td><button type="button" class="button-link-delete wpfv-remove-rd-mapping">Remover</button></td>';
+	}
 	private function validation_textarea( $name, $label, $validation ) { $id = 'wpfv-' . sanitize_html_class( str_replace( '_', '-', $name ) ); echo '<p><label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label><br><textarea id="' . esc_attr( $id ) . '" class="large-text code" rows="5" name="' . esc_attr( $name ) . '">' . esc_textarea( implode( "\n", (array) $validation[$name] ) ) . '</textarea></p>'; }
 
 	public function settings_page() {
@@ -680,7 +689,8 @@ class WPFV_Admin {
 			$label = isset( $item['name'] ) ? $item['name'] : ( isset( $item['label'] ) ? $item['label'] : $slug );
 			$required = isset( $required_ids[ $id ] ) || isset( $required_slugs[ $slug ] ) || ( isset( $item['required'] ) && in_array( $item['required'], array( true, 1, '1' ), true ) ) || ( isset( $item['is_required'] ) && in_array( $item['is_required'], array( true, 1, '1' ), true ) );
 			if ( $required && 'fields' === $catalog ) $label .= ' (obrigatório)';
-			if ( $id ) $items[] = array( 'value' => 'fields' === $catalog ? 'custom:' . $slug : $id, 'legacy_value' => 'fields' === $catalog ? 'custom:' . $id : $id, 'label' => $label );
+			$type = isset( $item['type'] ) && is_scalar( $item['type'] ) ? (string) $item['type'] : ( isset( $item['field_type'] ) && is_scalar( $item['field_type'] ) ? (string) $item['field_type'] : '' );
+			if ( $id ) $items[] = array( 'value' => 'fields' === $catalog ? 'custom:' . $slug : $id, 'legacy_value' => 'fields' === $catalog ? 'custom:' . $id : $id, 'label' => $label, 'multiple' => false !== stripos( $type, 'multi' ) );
 		}
 		wp_send_json_success( array( 'items' => $items, 'warning' => $required_warning ) );
 	}
@@ -827,6 +837,27 @@ class WPFV_Admin {
 		return $out;
 	}
 	private function sanitize_pd_map(){ $sources=isset($_POST['pd_source'])?(array)wp_unslash($_POST['pd_source']):array();$entities=isset($_POST['pd_entity'])?(array)wp_unslash($_POST['pd_entity']):array();$targets=isset($_POST['pd_target'])?(array)wp_unslash($_POST['pd_target']):array();$out=array();foreach($sources as $i=>$source){$source=sanitize_key($source);$entity=isset($entities[$i])?sanitize_key($entities[$i]):'';$target=isset($targets[$i])?sanitize_text_field($targets[$i]):'';if($source&&in_array($entity,array('person','organization','deal'),true)&&$target){$out[]=array('source'=>$source,'entity'=>$entity,'target'=>$target);}}return $out; }
-	private function sanitize_rd_map(){$s=isset($_POST['rd_source'])?(array)wp_unslash($_POST['rd_source']):array();$e=isset($_POST['rd_entity'])?(array)wp_unslash($_POST['rd_entity']):array();$t=isset($_POST['rd_target'])?(array)wp_unslash($_POST['rd_target']):array();$out=array();$seen=array();foreach($s as $i=>$source){$source=sanitize_key($source);$entity=isset($e[$i])?sanitize_key($e[$i]):'';$target=isset($t[$i])?sanitize_text_field($t[$i]):'';$key=$entity.'|'.$target;if($source&&in_array($entity,array('contact','organization','deal'),true)&&$target&&!isset($seen[$key])){$out[]=array('source'=>$source,'entity'=>$entity,'target'=>$target);$seen[$key]=true;}}return $out;}
+	private function sanitize_rd_map(){
+		$s=isset($_POST['rd_source'])?(array)wp_unslash($_POST['rd_source']):array();
+		$e=isset($_POST['rd_entity'])?(array)wp_unslash($_POST['rd_entity']):array();
+		$t=isset($_POST['rd_target'])?(array)wp_unslash($_POST['rd_target']):array();
+		$f=isset($_POST['rd_fixed_value'])?(array)wp_unslash($_POST['rd_fixed_value']):array();
+		$l=isset($_POST['rd_fixed_list'])?(array)wp_unslash($_POST['rd_fixed_list']):array();
+		$out=array();$seen=array();
+		foreach($s as $i=>$source){
+			$source=sanitize_key($source);
+			$entity=isset($e[$i])?sanitize_key($e[$i]):'';
+			$target=isset($t[$i])?sanitize_text_field($t[$i]):'';
+			$key=$entity.'|'.$target;
+			if(!$source||!in_array($entity,array('contact','organization','deal'),true)||!$target||isset($seen[$key]))continue;
+			$row=array('source'=>$source,'entity'=>$entity,'target'=>$target);
+			if('__fixed__'===$source){
+				$row['fixed_value']=isset($f[$i])?sanitize_text_field($f[$i]):'';
+				$row['fixed_list']=0===strpos($target,'custom:')&&!empty($l[$i]);
+			}
+			$out[]=$row;$seen[$key]=true;
+		}
+		return $out;
+	}
 	private function sanitize_validation(){return array('phone_validation'=>!empty($_POST['phone_validation']),'phone_message'=>isset($_POST['phone_message'])?sanitize_text_field(wp_unslash($_POST['phone_message'])):'','email_block_enabled'=>!empty($_POST['email_block_enabled']),'email_block_domains'=>$this->sanitize_lines('email_block_domains'),'email_block_suffixes'=>$this->sanitize_lines('email_block_suffixes'),'email_block_words'=>$this->sanitize_lines('email_block_words'),'email_msg_domains'=>isset($_POST['email_msg_domains'])?sanitize_text_field(wp_unslash($_POST['email_msg_domains'])):'','email_msg_suffixes'=>isset($_POST['email_msg_suffixes'])?sanitize_text_field(wp_unslash($_POST['email_msg_suffixes'])):'','email_msg_words'=>isset($_POST['email_msg_words'])?sanitize_text_field(wp_unslash($_POST['email_msg_words'])):'');}
 }

@@ -70,9 +70,13 @@ class WPFV_Field_Mapper {
 			$source = isset( $row['source'] ) ? sanitize_key( $row['source'] ) : '';
 			$entity = isset( $row['entity'] ) ? sanitize_key( $row['entity'] ) : '';
 			$target = isset( $row['target'] ) ? sanitize_text_field( $row['target'] ) : '';
-			if ( ! $source || ! isset( $fields[ $source ] ) || ! isset( $result[ $entity ] ) || ! $target || '' === $fields[ $source ] ) { continue; }
-			$value = is_array( $fields[ $source ] ) ? implode( ', ', $fields[ $source ] ) : sanitize_text_field( $fields[ $source ] );
-			$custom_value = is_array( $fields[ $source ] ) ? array_values( array_filter( array_map( 'sanitize_text_field', $fields[ $source ] ), 'strlen' ) ) : $value;
+			$fixed = '__fixed__' === $source;
+			if ( ! $source || ! isset( $result[ $entity ] ) || ! $target || ( ! $fixed && ! isset( $fields[ $source ] ) ) ) { continue; }
+			$raw = $fixed ? ( isset( $row['fixed_value'] ) ? $row['fixed_value'] : '' ) : $fields[ $source ];
+			if ( '' === $raw || array() === $raw ) { continue; }
+			$value = is_array( $raw ) ? implode( ', ', $raw ) : sanitize_text_field( $raw );
+			if ( '' === $value ) { continue; }
+			$custom_value = is_array( $raw ) ? array_values( array_filter( array_map( 'sanitize_text_field', $raw ), 'strlen' ) ) : ( $fixed && ! empty( $row['fixed_list'] ) ? array( $value ) : $value );
 			if ( 0 === strpos( $target, 'custom:' ) && ( array() === $custom_value || '' === $custom_value ) ) { continue; }
 			if ( 'contact' === $entity && 'email' === $target ) { $result['contact']['emails'] = array( array( 'email' => sanitize_email( $value ) ) ); }
 			elseif ( 'contact' === $entity && 'phone' === $target ) { $result['contact']['phones'] = array( array( 'phone' => $value, 'type' => 'work' ) ); }

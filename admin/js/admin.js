@@ -229,6 +229,7 @@
 		let found = false;
 		items.forEach( function ( item ) {
 			const option = new Option( item.label, item.value );
+			option.dataset.multiple = item.multiple ? '1' : '0';
 			if ( selected && ( String( item.value ) === selected || String( item.legacy_value || '' ) === selected ) ) {
 				option.selected = true;
 				found = true;
@@ -264,29 +265,51 @@
 		} ).catch( function ( error ) {
 			rdMessage( error.message + ' Os valores salvos foram preservados. Consulte Contatos > Logs.', true );
 		} );
-		const rdFields = {};
-		function loadRdFieldRow( entitySelect ) {
-			const target = entitySelect.closest( 'tr' ).querySelector( '.wpfv-rd-target' );
+	const rdFields = {};
+	function syncRdFixedRow( row ) {
+		const source = row.querySelector( '.wpfv-rd-source' );
+		const target = row.querySelector( '.wpfv-rd-target' );
+		const controls = row.querySelector( '.wpfv-rd-fixed-controls' );
+		const format = row.querySelector( '.wpfv-rd-fixed-format' );
+		const fixed = source.value === '__fixed__';
+		controls.hidden = ! fixed;
+		format.hidden = ! fixed || ! String( target.value || target.dataset.selected || '' ).startsWith( 'custom:' );
+	}
+	function loadRdFieldRow( entitySelect ) {
+		const row = entitySelect.closest( 'tr' );
+		const target = row.querySelector( '.wpfv-rd-target' );
 			const entity = entitySelect.value;
 			target.disabled = true;
 			const request = rdFields[ entity ] ? Promise.resolve( rdFields[ entity ] ) : requestRdCatalog( 'fields', { entity: entity } ).then( function ( items ) { rdFields[ entity ] = items; return items; } );
-			return request.then( function ( items ) {
-				fillRdSelect( target, items, '— Selecione o campo —' );
-				return true;
+		return request.then( function ( items ) {
+			fillRdSelect( target, items, '— Selecione o campo —' );
+			syncRdFixedRow( row );
+			return true;
 			} ).catch( function ( error ) {
 				rdMessage( error.message + ' Os mapeamentos salvos foram preservados. Consulte Contatos > Logs.', true );
 				return false;
 			} ).finally( function () { target.disabled = false; } );
 		}
-		function bindRdRow( entitySelect ) {
-			entitySelect.addEventListener( 'change', function () {
-				const target = entitySelect.closest( 'tr' ).querySelector( '.wpfv-rd-target' );
-				target.dataset.selected = '';
-				target.innerHTML = '';
-				target.appendChild( new Option( '— Selecione o campo —', '' ) );
-				loadRdFieldRow( entitySelect );
-			} );
-			return loadRdFieldRow( entitySelect );
+	function bindRdRow( entitySelect ) {
+		const row = entitySelect.closest( 'tr' );
+		const source = row.querySelector( '.wpfv-rd-source' );
+		const target = row.querySelector( '.wpfv-rd-target' );
+		const fixedList = row.querySelector( '.wpfv-rd-fixed-list' );
+		source.addEventListener( 'change', function () { syncRdFixedRow( row ); } );
+		target.addEventListener( 'change', function () {
+			if ( source.value === '__fixed__' ) fixedList.value = target.selectedOptions[0] && target.selectedOptions[0].dataset.multiple === '1' ? '1' : '0';
+			syncRdFixedRow( row );
+		} );
+		entitySelect.addEventListener( 'change', function () {
+			target.dataset.selected = '';
+			target.innerHTML = '';
+			target.appendChild( new Option( '— Selecione o campo —', '' ) );
+			fixedList.value = '0';
+			syncRdFixedRow( row );
+			loadRdFieldRow( entitySelect );
+		} );
+		syncRdFixedRow( row );
+		return loadRdFieldRow( entitySelect );
 		}
 		Promise.all( Array.from( document.querySelectorAll( '.wpfv-rd-entity' ) ).map( bindRdRow ) ).then( function ( results ) {
 			rdFieldsLoaded = results.every( Boolean );

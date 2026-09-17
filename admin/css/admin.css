@@ -77,6 +77,24 @@
 	white-space: nowrap;
 }
 
+.wpfv-rd-fixed-controls {
+	margin-top: 8px;
+}
+
+.wpfv-rd-fixed-value {
+	box-sizing: border-box;
+	max-width: 100%;
+}
+
+.wpfv-rd-fixed-format {
+	display: block;
+	margin-top: 6px;
+}
+
+.wpfv-rd-fixed-format[hidden] {
+	display: none;
+}
+
 .wpfv-inline-fields {
 	display: grid;
 	grid-template-columns: max-content minmax(220px, 1fr) max-content minmax(220px, 1fr);
