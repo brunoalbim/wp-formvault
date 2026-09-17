@@ -280,7 +280,13 @@
 		const target = row.querySelector( '.wpfv-rd-target' );
 			const entity = entitySelect.value;
 			target.disabled = true;
-			const request = rdFields[ entity ] ? Promise.resolve( rdFields[ entity ] ) : requestRdCatalog( 'fields', { entity: entity } ).then( function ( items ) { rdFields[ entity ] = items; return items; } );
+			if ( ! rdFields[ entity ] ) {
+				rdFields[ entity ] = requestRdCatalog( 'fields', { entity: entity } ).catch( function ( error ) {
+					delete rdFields[ entity ];
+					throw error;
+				} );
+			}
+			const request = rdFields[ entity ];
 		return request.then( function ( items ) {
 			fillRdSelect( target, items, '— Selecione o campo —' );
 			syncRdFixedRow( row );

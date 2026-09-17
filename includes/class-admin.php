@@ -22,6 +22,7 @@ class WPFV_Admin {
 		add_action( 'admin_post_wpfv_save_form_settings', array( $this, 'save_form_settings' ) );
 		add_action( 'admin_post_wpfv_save_global_settings', array( $this, 'save_global_settings' ) );
 		add_action( 'admin_post_wpfv_clear_logs', array( $this, 'clear_logs' ) );
+		add_action( 'admin_post_wpfv_dismiss_rdcrm_error', array( $this, 'dismiss_rdcrm_error' ) );
 		add_action( 'wp_ajax_wpfv_test_pipedrive', array( $this, 'test_pipedrive' ) );
 		add_action( 'wp_ajax_wpfv_test_brevo', array( $this, 'test_brevo' ) );
 		add_action( 'wp_ajax_wpfv_test_rdcrm', array( $this, 'test_rdcrm' ) );
@@ -538,7 +539,7 @@ class WPFV_Admin {
 			<p class="wpfv-page-description">Conecte os serviços externos e defina como os eventos técnicos serão registrados.</p>
 			<?php if ( isset( $_GET['updated'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Configurações salvas.</p></div><?php endif; ?>
 			<?php if ( isset( $_GET['rdcrm'] ) ) : ?><div class="notice notice-<?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'success':'warning'; ?> is-dismissible"><p><?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'RD CRM conectado com sucesso.':'Estado da conexão do RD CRM atualizado.'; ?></p></div><?php endif; ?>
-			<?php $rdcrm_error = get_transient( 'wpfv_rdcrm_error_' . get_current_user_id() ); if ( $rdcrm_error ) : ?><div class="notice notice-error"><p><?php echo esc_html( $rdcrm_error ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-logs' ) ); ?>">Ver logs</a></p></div><?php endif; ?>
+			<?php $rdcrm_error = get_transient( 'wpfv_rdcrm_error_' . get_current_user_id() ); if ( $rdcrm_error && false !== strpos( $rdcrm_error, '(HTTP 429)' ) ) { delete_transient( 'wpfv_rdcrm_error_' . get_current_user_id() ); $rdcrm_error = false; } if ( $rdcrm_error ) : ?><div class="notice notice-error"><p><?php echo esc_html( $rdcrm_error ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-logs' ) ); ?>">Ver logs</a></p><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"><input type="hidden" name="action" value="wpfv_dismiss_rdcrm_error"><?php wp_nonce_field( 'wpfv_dismiss_rdcrm_error' ); ?><p><button type="submit" class="button">Dispensar aviso</button></p></form></div><?php endif; ?>
 			<?php if ( ! $rdcrm_error && ( new WPFV_RDCRM_API() )->connected() && isset( $rdcrm_health['status'] ) && 'error' === $rdcrm_health['status'] ) : ?><div class="notice notice-error"><p><?php echo esc_html( $rdcrm_health['message'] ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-logs' ) ); ?>">Ver logs</a></p></div><?php endif; ?>
 			<nav class="nav-tab-wrapper" aria-label="Seções de configuração"><a href="#wpfv-settings-logs" class="nav-tab nav-tab-active wpfv-nav-tab">Logs</a><a href="#wpfv-settings-antispam" class="nav-tab wpfv-nav-tab">Antispam</a><a href="#wpfv-settings-integrations" class="nav-tab wpfv-nav-tab">Integrações</a></nav>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -642,12 +643,24 @@ class WPFV_Admin {
 	}
 	private function rdcrm_admin_error( $operation, $result ) {
 		$message = isset( $result['error'] ) ? sanitize_text_field( $result['error'] ) : 'Falha sem detalhes retornados pelo RD CRM.';
-		set_transient( 'wpfv_rdcrm_error_' . get_current_user_id(), $message, DAY_IN_SECONDS );
+		if ( 429 !== (int) ( isset( $result['code'] ) ? $result['code'] : 0 ) ) {
+			set_transient( 'wpfv_rdcrm_error_' . get_current_user_id(), $message, DAY_IN_SECONDS );
+		}
 		$this->repository->log( 'error', 'rdcrm', 'Falha na configuração do RD CRM.', array(
 			'operation' => sanitize_text_field( $operation ),
 			'http_status' => isset( $result['code'] ) ? absint( $result['code'] ) : 0,
 			'error' => $message,
 		) );
+	}
+
+	public function dismiss_rdcrm_error() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) );
+		}
+		check_admin_referer( 'wpfv_dismiss_rdcrm_error' );
+		delete_transient( 'wpfv_rdcrm_error_' . get_current_user_id() );
+		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-settings' ) );
+		exit;
 	}
 
 	public function rdcrm_catalog() {
