@@ -91,7 +91,7 @@ class WPFV_Recaptcha {
 			return $this->unavailable( 'provider_unavailable', 'HTTP ' . $code );
 		}
 		if ( in_array( $code, array( 400, 401, 403 ), true ) ) {
-			return $this->configuration_error( 'provider_configuration', $this->provider_error_detail( $code, $body ) );
+			return $this->configuration_error( 'provider_configuration', $this->provider_error_detail( $code, $body, $settings, $token ) );
 		}
 		if ( $code < 200 || $code >= 300 || ! is_array( $body ) ) {
 			return $this->spam( 'invalid_response' );
@@ -149,8 +149,8 @@ class WPFV_Recaptcha {
 		return array_values( array_filter( $sanitized ) );
 	}
 
-	/** Keep only diagnostic codes from Google; never store the response message or credentials. */
-	private function provider_error_detail( $code, $body ) {
+	/** Store a short diagnostic after removing known credentials and token-like values. */
+	private function provider_error_detail( $code, $body, $settings, $token ) {
 		$parts = array( 'HTTP ' . (int) $code );
 		$error = is_array( $body ) && isset( $body['error'] ) && is_array( $body['error'] ) ? $body['error'] : array();
 		if ( isset( $error['status'] ) && is_scalar( $error['status'] ) && preg_match( '/^[A-Z][A-Z_]{1,63}$/', (string) $error['status'] ) ) {
@@ -164,6 +164,15 @@ class WPFV_Recaptcha {
 					break;
 				}
 			}
+		}
+		$message = isset( $error['message'] ) && is_scalar( $error['message'] ) ? (string) $error['message'] : '';
+		if ( $message ) {
+			foreach ( array( $token, isset( $settings['recaptcha_api_key'] ) ? $settings['recaptcha_api_key'] : '', isset( $settings['recaptcha_site_key'] ) ? $settings['recaptcha_site_key'] : '' ) as $secret ) {
+				if ( is_string( $secret ) && '' !== $secret ) $message = str_replace( $secret, '[valor omitido]', $message );
+			}
+			$message = preg_replace( '/AIza[0-9A-Za-z_-]{20,}|[A-Za-z0-9_-]{64,}/', '[valor omitido]', $message );
+			$message = substr( sanitize_text_field( $message ), 0, 250 );
+			if ( $message ) $parts[] = $message;
 		}
 		return implode( ' · ', array_unique( $parts ) );
 	}

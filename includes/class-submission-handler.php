@@ -151,7 +151,7 @@ class WPFV_Submission_Handler {
 		$guard->remember( $fingerprint, $stored_id );
 
 		if ( 'spam' === $status ) {
-			$this->repository->log( 'warning', 'antispam', 'Envio colocado em quarentena.', array( 'form_id' => $form_id, 'reason' => isset( $risk_data['reason'] ) ? $risk_data['reason'] : 'unknown', 'score' => isset( $risk_data['score'] ) ? $risk_data['score'] : null ), $stored_id );
+			$this->repository->log( 'warning', 'antispam', 'Envio colocado em quarentena.', array( 'form_id' => $form_id, 'reason' => isset( $risk_data['reason'] ) ? $risk_data['reason'] : 'unknown', 'score' => isset( $risk_data['score'] ) ? $risk_data['score'] : null, 'provider_detail' => isset( $risk_data['provider_detail'] ) ? $risk_data['provider_detail'] : '' ), $stored_id );
 			$this->respond( 'success', $form_id, $form, array(), $stored_id );
 		}
 
