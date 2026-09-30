@@ -219,9 +219,9 @@ class WPFV_Admin {
 		$deliveries  = $this->repository->get_deliveries( $id );
 		$form         = $this->registry->get( $item->form_id );
 		$submitted_at = get_date_from_gmt( $item->created_at, get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) );
-		$first_utm    = $this->extract_values( $attribution, array( 'first_utm_source', 'first_utm_medium', 'first_utm_campaign', 'first_utm_term', 'first_utm_content' ) );
-		$last_utm     = $this->extract_values( $attribution, array( 'last_utm_source', 'last_utm_medium', 'last_utm_campaign', 'last_utm_term', 'last_utm_content' ) );
-		$ads          = $this->extract_values( $attribution, array( 'gclid', 'fbclid', 'msclkid', 'ttclid' ) );
+		$first_utm    = $this->extract_values( $attribution, array( 'first_utm_source', 'first_normalized_source', 'first_utm_medium', 'first_utm_channel', 'first_utm_campaign', 'first_utm_term', 'first_utm_content', 'first_attribution_method' ) );
+		$last_utm     = $this->extract_values( $attribution, array( 'last_utm_source', 'last_normalized_source', 'last_utm_medium', 'last_utm_channel', 'last_utm_campaign', 'last_utm_term', 'last_utm_content', 'last_attribution_method' ) );
+		$ads          = $this->extract_values( $attribution, array( 'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'ttclid' ) );
 		$page_data    = $this->extract_values( $attribution, array( 'landing_url', 'landing_referrer', 'submission_url', 'submission_title' ) );
 		$known_keys   = array_merge( array_keys( $first_utm ), array_keys( $last_utm ), array_keys( $ads ), array_keys( $page_data ) );
 		$technical    = array_diff_key( $attribution, array_flip( $known_keys ) );
@@ -335,9 +335,9 @@ class WPFV_Admin {
 		if ( ! $values ) { return; }
 		$labels = array(
 			'landing_url' => 'Página de entrada', 'landing_referrer' => 'Referência de entrada', 'submission_url' => 'URL do envio', 'submission_title' => 'Título da página',
-			'first_utm_source' => 'Origem', 'first_utm_medium' => 'Mídia', 'first_utm_campaign' => 'Campanha', 'first_utm_term' => 'Termo', 'first_utm_content' => 'Conteúdo',
-			'last_utm_source' => 'Origem', 'last_utm_medium' => 'Mídia', 'last_utm_campaign' => 'Campanha', 'last_utm_term' => 'Termo', 'last_utm_content' => 'Conteúdo',
-			'gclid' => 'Google Click ID', 'fbclid' => 'Meta Click ID', 'msclkid' => 'Microsoft Click ID', 'ttclid' => 'TikTok Click ID',
+			'first_utm_source' => 'Origem', 'first_normalized_source' => 'Origem normalizada', 'first_utm_medium' => 'Mídia', 'first_utm_channel' => 'Canal', 'first_utm_campaign' => 'Campanha', 'first_utm_term' => 'Termo', 'first_utm_content' => 'Conteúdo', 'first_attribution_method' => 'Método de atribuição',
+			'last_utm_source' => 'Origem', 'last_normalized_source' => 'Origem normalizada', 'last_utm_medium' => 'Mídia', 'last_utm_channel' => 'Canal', 'last_utm_campaign' => 'Campanha', 'last_utm_term' => 'Termo', 'last_utm_content' => 'Conteúdo', 'last_attribution_method' => 'Método de atribuição',
+			'gclid' => 'Google Click ID', 'gbraid' => 'Google GBRAID', 'wbraid' => 'Google WBRAID', 'fbclid' => 'Meta Click ID', 'msclkid' => 'Microsoft Click ID', 'ttclid' => 'TikTok Click ID',
 		);
 		?>
 		<section class="card wpfv-admin-card wpfv-detail-card">
@@ -346,6 +346,7 @@ class WPFV_Admin {
 			<?php foreach ( $values as $key => $raw_value ) :
 				$is_structured = is_array( $raw_value ) && isset( $raw_value['value'] );
 				$value         = $is_structured ? $raw_value['value'] : $raw_value;
+				if ( false !== strpos( $key, 'attribution_method' ) ) { $value = $this->attribution_method_label( $value ); }
 				$label         = $is_structured && isset( $raw_value['label'] ) ? $raw_value['label'] : ( isset( $labels[ $key ] ) ? $labels[ $key ] : ucwords( str_replace( '_', ' ', $key ) ) );
 				if ( $form && isset( $form['fields'][ $key ]['label'] ) ) { $label = $form['fields'][ $key ]['label']; }
 				$url = $is_structured && isset( $raw_value['url'] ) ? $raw_value['url'] : ( false !== strpos( $key, 'url' ) ? $value : '' );
@@ -355,6 +356,20 @@ class WPFV_Admin {
 			</dl></div>
 		</section>
 		<?php
+	}
+
+	private function attribution_method_label( $method ) {
+		$labels = array(
+			'utm'                => 'UTM',
+			'click_id'           => 'Identificador de anúncio',
+			'referrer_search'    => 'Referência de buscador',
+			'referrer_social'    => 'Referência de rede social',
+			'referral'           => 'Referência externa',
+			'direct_no_referrer' => 'Direto — sem referência',
+			'legacy_utm'         => 'UTM legada',
+		);
+		$method = sanitize_key( $method );
+		return isset( $labels[ $method ] ) ? $labels[ $method ] : $method;
 	}
 
 	private function retry_url( $submission_id, $integration, $return_to_detail = false ) {

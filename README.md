@@ -62,7 +62,7 @@ Tipos aceitos: `text`, `textarea`, `email`, `tel`, `url`, `integer`, `checkbox`,
 </form>
 ```
 
-O helper adiciona `action`, ID do formulário, nonce, marcador temporal assinado e honeypot. O atributo `data-wpfv-form` habilita envio AJAX, avaliação do reCAPTCHA quando configurado e captura automática de página, UTMs, `gclid` e `fbclid`; sem JavaScript, o envio continua funcionando por `admin-post.php`, mas um formulário protegido pelo reCAPTCHA sem token será colocado em quarentena.
+O helper adiciona `action`, ID do formulário, nonce, marcador temporal assinado e honeypot. O atributo `data-wpfv-form` habilita envio AJAX, avaliação do reCAPTCHA quando configurado e captura automática de página, UTMs, referenciador e identificadores de anúncio (`gclid`, `gbraid`, `wbraid`, `msclkid`, `ttclid` e `fbclid`). Sem JavaScript, o envio continua funcionando por `admin-post.php`, mas a atribuição não é inferida e um formulário protegido pelo reCAPTCHA sem token será colocado em quarentena.
 
 ### 3. Configurar e testar
 
@@ -94,9 +94,30 @@ Quando a API do Google devolver HTTP 400, 401 ou 403, o diagnóstico com status 
 
 Se o site usa Content Security Policy, adicione `https://www.google.com/recaptcha/` e `https://www.gstatic.com/recaptcha/` a `script-src`, `https://www.google.com/recaptcha/` e `https://recaptcha.google.com/recaptcha/` a `frame-src`, e `https://www.google.com/recaptcha/` a `connect-src`. Revise também a política de privacidade do site antes da ativação.
 
+## Atribuição de origem
+
+O plugin classifica a origem no navegador usando, nesta ordem, UTMs explícitas, identificadores de clique, referenciador externo e acesso direto. A primeira atribuição e a última atribuição não direta ficam em um cookie por 90 dias; um retorno direto não apaga uma campanha anterior.
+
+O valor original de `utm_source` é preservado. Uma segunda propriedade normalizada agrupa aliases conhecidos: por exemplo, `ig`, `instagram_feed` e `instragram` resultam em `normalized_source: instagram`. A mídia determina o canal no padrão usado pelo relatório da RD Station: `cpc` vira `Paid Search`, `organic` vira `Organic Search` e `social` vira `Social`.
+
+Projetos podem ampliar os aliases em PHP sem alterar o plugin:
+
+```php
+add_filter( 'wpfv_attribution_source_aliases', function ( $sources ) {
+	$sources['instagram']['aliases'][] = 'instagram_bio';
+	$sources['parceiro'] = array(
+		'family'  => 'referral',
+		'aliases' => array( 'parceiro', 'portal_parceiro' ),
+	);
+	return $sources;
+} );
+```
+
+As famílias aceitas são `search`, `social`, `email` e `referral`. O alias casa exatamente ou como prefixo separado por pontuação, espaço, hífen ou sublinhado; não há correspondência aproximada.
+
 ## Payload do webhook
 
-O webhook envia o ID do formulário tanto em `source` quanto em `form.source`. Os campos do contato ficam isolados em `form.fields`, preservando os nomes configurados no mapeamento, inclusive espaços, acentos e letras maiúsculas. `form.page` identifica a página em que o envio aconteceu e `form.utm` contém somente os dados da última campanha atribuída ao contato.
+O webhook envia o ID do formulário tanto em `source` quanto em `form.source`. Os campos do contato ficam isolados em `form.fields`, preservando os nomes configurados no mapeamento, inclusive espaços, acentos e letras maiúsculas. `form.page` identifica a página em que o envio aconteceu e `form.utm` contém a última atribuição não direta — ou Direct quando não houver outra origem.
 
 ```json
 {
@@ -112,9 +133,12 @@ O webhook envia o ID do formulário tanto em `source` quanto em `form.source`. O
 			"conversion_url": "https://example.com/contato/"
 		},
 		"utm": {
-			"utm_source": "google",
+			"utm_source": "instagram_feed",
+			"normalized_source": "instagram",
 			"utm_medium": "cpc",
-			"utm_campaign": "campanha-exemplo"
+			"utm_channel": "Paid Search",
+			"utm_campaign": "campanha-exemplo",
+			"attribution_method": "utm"
 		}
 	}
 }

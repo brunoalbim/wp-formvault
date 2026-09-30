@@ -3,7 +3,10 @@
 
 	var COOKIE = 'wpfv_attribution';
 	var DAYS = 90;
-	var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+	var classifier = window.WPFVAttributionClassifier;
+	var UTM_KEYS = classifier.UTM_KEYS;
+	var CLICK_IDS = classifier.CLICK_IDS;
+	var ATTRIBUTION_KEYS = UTM_KEYS.concat(['utm_channel', 'normalized_source', 'attribution_method']);
 
 	function readCookie() {
 		var match = document.cookie.match(new RegExp('(?:^|; )' + COOKIE + '=([^;]*)'));
@@ -17,29 +20,24 @@
 	}
 
 	function currentCampaign() {
-		var params = new URLSearchParams(window.location.search);
-		var campaign = {};
-		var found = false;
-		UTM_KEYS.forEach(function (key) {
-			if (params.get(key)) { campaign[key] = params.get(key); found = true; }
+		var config = window.wpFormVault.attribution || {};
+		return classifier.classify({
+			search: window.location.search,
+			referrer: document.referrer || '',
+			currentHost: window.location.hostname,
+			sources: config.sources || {}
 		});
-		['gclid', 'fbclid'].forEach(function (key) {
-			if (params.get(key)) { campaign[key] = params.get(key); found = true; }
-		});
-		return found ? campaign : null;
 	}
 
 	function resolveAttribution() {
 		var data = readCookie();
 		var campaign = currentCampaign();
+		var config = window.wpFormVault.attribution || {};
 		if (!data.landing_url) {
 			data.landing_url = window.location.href;
 			data.landing_referrer = document.referrer || '';
 		}
-		if (campaign) {
-			if (!data.first) { data.first = campaign; }
-			data.last = campaign;
-		}
+		data = classifier.merge(data, campaign, config.sources || {});
 		writeCookie(data);
 		return data;
 	}
@@ -84,12 +82,13 @@
 	}
 
 	function inject(form, data) {
-		UTM_KEYS.forEach(function (key) {
+		ATTRIBUTION_KEYS.forEach(function (key) {
 			hidden(form, 'first_' + key, data.first && data.first[key]);
 			hidden(form, 'last_' + key, data.last && data.last[key]);
 		});
-		hidden(form, 'gclid', (data.last && data.last.gclid) || (data.first && data.first.gclid));
-		hidden(form, 'fbclid', (data.last && data.last.fbclid) || (data.first && data.first.fbclid));
+		CLICK_IDS.forEach(function (key) {
+			hidden(form, key, (data.last && data.last[key]) || (data.first && data.first[key]));
+		});
 		hidden(form, 'landing_url', data.landing_url);
 		hidden(form, 'landing_referrer', data.landing_referrer);
 		hidden(form, 'submission_url', window.location.href);

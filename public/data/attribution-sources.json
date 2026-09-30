@@ -1,0 +1,16 @@
+{
+	"google": { "family": "search", "aliases": ["google", "googleads", "google_ads", "adwords"] },
+	"bing": { "family": "search", "aliases": ["bing", "microsoft", "microsoft_ads"] },
+	"yahoo": { "family": "search", "aliases": ["yahoo"] },
+	"duckduckgo": { "family": "search", "aliases": ["duckduckgo", "duck_duck_go"] },
+	"ecosia": { "family": "search", "aliases": ["ecosia"] },
+	"instagram": { "family": "social", "aliases": ["instagram", "ig", "insta", "instragram"] },
+	"facebook": { "family": "social", "aliases": ["facebook", "fb"] },
+	"youtube": { "family": "social", "aliases": ["youtube", "youtu_be"] },
+	"linkedin": { "family": "social", "aliases": ["linkedin", "linked_in", "lnkd_in"] },
+	"tiktok": { "family": "social", "aliases": ["tiktok", "tik_tok"] },
+	"x": { "family": "social", "aliases": ["x", "twitter", "t_co"] },
+	"pinterest": { "family": "social", "aliases": ["pinterest"] },
+	"threads": { "family": "social", "aliases": ["threads"] },
+	"email": { "family": "email", "aliases": ["email", "newsletter", "mailchimp"] }
+}

@@ -26,7 +26,9 @@ class WPFV_Assets {
 			}
 		}
 
-		$dependencies = array();
+		wp_enqueue_script( 'wp-formvault-attribution-classifier', WPFV_URL . 'public/js/attribution-classifier.js', array(), WPFV_VERSION, true );
+
+		$dependencies = array( 'wp-formvault-attribution-classifier' );
 		$global       = WPFV_Settings::get_global();
 		if ( ! empty( $recaptcha_forms ) ) {
 			$recaptcha_url = add_query_arg( 'render', $global['recaptcha_site_key'], 'https://www.google.com/recaptcha/enterprise.js' );
@@ -43,6 +45,9 @@ class WPFV_Assets {
 				'sendingLabel' => __( 'Enviando…', 'wp-formvault' ),
 				'networkError' => __( 'Não foi possível enviar agora. Verifique sua conexão e tente novamente.', 'wp-formvault' ),
 				'validations'  => $validation_forms,
+				'attribution'  => array(
+					'sources' => $this->attribution_source_aliases(),
+				),
 				'recaptcha'    => array(
 					'siteKey' => ! empty( $recaptcha_forms ) ? $global['recaptcha_site_key'] : '',
 					'forms'   => $recaptcha_forms,
@@ -50,5 +55,58 @@ class WPFV_Assets {
 			)
 		);
 		wp_enqueue_style( 'wp-formvault-forms', WPFV_URL . 'public/css/forms.css', array(), WPFV_VERSION );
+	}
+
+	/**
+	 * Return the sanitized source aliases exposed to the browser classifier.
+	 *
+	 * @return array<string,array<string,mixed>>
+	 */
+	private function attribution_source_aliases() {
+		$path     = WPFV_DIR . 'public/data/attribution-sources.json';
+		$contents = is_readable( $path ) ? file_get_contents( $path ) : '';
+		$defaults = $contents ? json_decode( $contents, true ) : array();
+		$defaults = is_array( $defaults ) ? $defaults : array();
+
+		/**
+		 * Filters source aliases used by the browser attribution classifier.
+		 *
+		 * Each canonical source contains a supported `family` and an `aliases`
+		 * array. Aliases match either exactly or as a delimited prefix.
+		 *
+		 * @param array<string,array<string,mixed>> $defaults Source definitions.
+		 */
+		$definitions = apply_filters( 'wpfv_attribution_source_aliases', $defaults );
+		$definitions = is_array( $definitions ) ? $definitions : $defaults;
+		$allowed      = array( 'search', 'social', 'email', 'referral' );
+		$sanitized    = array();
+
+		foreach ( $definitions as $canonical => $definition ) {
+			$canonical = sanitize_key( $canonical );
+			if ( ! $canonical || ! is_array( $definition ) ) {
+				continue;
+			}
+			$family = isset( $definition['family'] ) ? sanitize_key( $definition['family'] ) : '';
+			if ( ! in_array( $family, $allowed, true ) ) {
+				continue;
+			}
+			$raw_aliases = isset( $definition['aliases'] ) && is_array( $definition['aliases'] ) ? $definition['aliases'] : array();
+			$aliases     = array();
+			foreach ( $raw_aliases as $alias ) {
+				if ( ! is_scalar( $alias ) ) {
+					continue;
+				}
+				$alias = substr( sanitize_text_field( $alias ), 0, 100 );
+				if ( '' !== $alias ) {
+					$aliases[] = $alias;
+				}
+			}
+			$aliases = array_slice( array_values( array_unique( $aliases ) ), 0, 50 );
+			if ( $aliases ) {
+				$sanitized[ $canonical ] = array( 'family' => $family, 'aliases' => $aliases );
+			}
+		}
+
+		return $sanitized;
 	}
 }

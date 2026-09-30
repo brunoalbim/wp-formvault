@@ -63,7 +63,7 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 	private function last_utm( $attribution ) {
 		$attribution = is_array( $attribution ) ? $attribution : array();
 		$utm         = array();
-		foreach ( array( 'source', 'medium', 'campaign', 'term', 'content' ) as $name ) {
+		foreach ( array( 'source', 'medium', 'channel', 'campaign', 'term', 'content' ) as $name ) {
 			$stored_key = 'last_utm_' . $name;
 			if ( ! isset( $attribution[ $stored_key ] ) || ! is_scalar( $attribution[ $stored_key ] ) ) {
 				continue;
@@ -71,6 +71,14 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 			$value = sanitize_text_field( $attribution[ $stored_key ] );
 			if ( '' !== $value ) {
 				$utm[ 'utm_' . $name ] = $value;
+			}
+		}
+		foreach ( array( 'last_normalized_source' => 'normalized_source', 'last_attribution_method' => 'attribution_method' ) as $stored_key => $payload_key ) {
+			if ( isset( $attribution[ $stored_key ] ) && is_scalar( $attribution[ $stored_key ] ) ) {
+				$value = sanitize_text_field( $attribution[ $stored_key ] );
+				if ( '' !== $value ) {
+					$utm[ $payload_key ] = $value;
+				}
 			}
 		}
 		return $utm;

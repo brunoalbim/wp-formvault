@@ -196,9 +196,9 @@ class WPFV_Submission_Handler {
 
 	private function sanitize_attribution() {
 		$allowed = array(
-			'first_utm_source', 'first_utm_medium', 'first_utm_campaign', 'first_utm_term', 'first_utm_content',
-			'last_utm_source', 'last_utm_medium', 'last_utm_campaign', 'last_utm_term', 'last_utm_content',
-			'gclid', 'fbclid', 'landing_url', 'landing_referrer', 'submission_url', 'submission_title',
+			'first_utm_source', 'first_normalized_source', 'first_utm_medium', 'first_utm_channel', 'first_utm_campaign', 'first_utm_term', 'first_utm_content', 'first_attribution_method',
+			'last_utm_source', 'last_normalized_source', 'last_utm_medium', 'last_utm_channel', 'last_utm_campaign', 'last_utm_term', 'last_utm_content', 'last_attribution_method',
+			'gclid', 'gbraid', 'wbraid', 'msclkid', 'ttclid', 'fbclid', 'landing_url', 'landing_referrer', 'submission_url', 'submission_title',
 		);
 		$raw     = isset( $_POST['wpfv_attribution'] ) && is_array( $_POST['wpfv_attribution'] ) ? wp_unslash( $_POST['wpfv_attribution'] ) : array();
 		$data    = array();

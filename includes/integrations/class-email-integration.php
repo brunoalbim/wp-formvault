@@ -45,15 +45,22 @@ class WPFV_Email_Integration implements WPFV_Integration {
 
 		$attribution_groups = array(
 			'UTM:' => array(
-				'last_utm_source'   => 'Origem',
-				'last_utm_medium'   => 'Mídia',
-				'last_utm_campaign' => 'Campanha',
-				'last_utm_term'     => 'Termo',
-				'last_utm_content'  => 'Conteúdo',
+				'last_utm_source'         => 'Origem',
+				'last_normalized_source'  => 'Origem normalizada',
+				'last_utm_medium'         => 'Mídia',
+				'last_utm_channel'        => 'Canal',
+				'last_utm_campaign'       => 'Campanha',
+				'last_utm_term'           => 'Termo',
+				'last_utm_content'        => 'Conteúdo',
+				'last_attribution_method' => 'Método de atribuição',
 			),
 			'Identificadores de anúncio:' => array(
-				'gclid'  => 'Google Click ID',
-				'fbclid' => 'Meta Click ID',
+				'gclid'    => 'Google Click ID',
+				'gbraid'   => 'Google GBRAID',
+				'wbraid'   => 'Google WBRAID',
+				'msclkid'  => 'Microsoft Click ID',
+				'ttclid'   => 'TikTok Click ID',
+				'fbclid'   => 'Meta Click ID',
 			),
 			'Página de entrada:' => array(
 				'landing_url'      => 'URL',
@@ -65,6 +72,9 @@ class WPFV_Email_Integration implements WPFV_Integration {
 			$group_lines = array();
 			foreach ( $attributes as $key => $label ) {
 				$value = isset( $attribution[ $key ] ) ? trim( (string) $attribution[ $key ] ) : '';
+				if ( 'last_attribution_method' === $key ) {
+					$value = $this->attribution_method_label( $value );
+				}
 				if ( '' !== $value ) {
 					$group_lines[] = $this->labeled_line( $label, $value, false !== strpos( $key, 'url' ) || 'landing_referrer' === $key );
 				}
@@ -112,5 +122,19 @@ class WPFV_Email_Integration implements WPFV_Integration {
 		}
 
 		return '<strong>' . $label . ':</strong> ' . $value;
+	}
+
+	private function attribution_method_label( $method ) {
+		$labels = array(
+			'utm'                => 'UTM',
+			'click_id'           => 'Identificador de anúncio',
+			'referrer_search'    => 'Referência de buscador',
+			'referrer_social'    => 'Referência de rede social',
+			'referral'           => 'Referência externa',
+			'direct_no_referrer' => 'Direto — sem referência',
+			'legacy_utm'         => 'UTM legada',
+		);
+		$method = sanitize_key( $method );
+		return isset( $labels[ $method ] ) ? $labels[ $method ] : $method;
 	}
 }
