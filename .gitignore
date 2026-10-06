@@ -1,2 +1,5 @@
-/wp-formvault-*.zip
-/wp-attribution-tracker-*.zip
+*.zip
+.DS_Store
+.env
+/tmp
+/temp
