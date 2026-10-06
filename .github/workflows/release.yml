@@ -120,12 +120,26 @@ jobs:
           git tag -a "$TAG" -m "WP FormVault $TAG"
           git push origin "$TAG"
 
+      - name: Sincronizar título do release existente
+        if: steps.check.outputs.release == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG"
+          else
+            echo "::notice::A tag $TAG existe, mas ainda não há um release publicado para renomear."
+          fi
+
       - name: Publicar release com o ZIP anexado
         if: steps.check.outputs.release == 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.check.outputs.tag }}
-          name: WP FormVault ${{ steps.check.outputs.tag }}
+          name: ${{ steps.check.outputs.tag }}
           files: ${{ steps.package.outputs.asset }}
           generate_release_notes: true
           make_latest: true
