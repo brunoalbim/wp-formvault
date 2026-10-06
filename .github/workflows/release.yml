@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "wp-formvault.php"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wp-formvault-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verificar versão e tag
+        id: check
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          CURRENT_VERSION=$(sed -n 's/^ \* Version:[[:space:]]*\([0-9][0-9.]*\).*$/\1/p' wp-formvault.php | head -n 1)
+          CONSTANT_VERSION=$(sed -n "s/^define( 'WPFV_VERSION', '\([0-9][0-9.]*\)' );$/\1/p" wp-formvault.php | head -n 1)
+
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "::error::Não foi possível identificar o Version: em wp-formvault.php."
+            exit 1
+          fi
+
+          if ! printf '%s' "$CURRENT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::A versão $CURRENT_VERSION não segue o formato X.Y.Z."
+            exit 1
+          fi
+
+          if [ "$CURRENT_VERSION" != "$CONSTANT_VERSION" ]; then
+            echo "::error::Version: ($CURRENT_VERSION) e WPFV_VERSION ($CONSTANT_VERSION) estão diferentes."
+            exit 1
+          fi
+
+          PREVIOUS_VERSION=""
+          if [ "$EVENT_NAME" = "push" ] && [ -n "${BEFORE_SHA:-}" ] && ! printf '%s' "$BEFORE_SHA" | grep -Eq '^0+$'; then
+            PREVIOUS_VERSION=$(git show "${BEFORE_SHA}:wp-formvault.php" 2>/dev/null \
+              | sed -n 's/^ \* Version:[[:space:]]*\([0-9][0-9.]*\).*$/\1/p' \
+              | head -n 1 || true)
+          fi
+
+          TAG="v${CURRENT_VERSION}"
+          VERSION_CHANGED=false
+          if [ -n "$PREVIOUS_VERSION" ] && [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            VERSION_CHANGED=true
+          fi
+
+          echo "Versão anterior: ${PREVIOUS_VERSION:-indisponível}"
+          echo "Versão atual:    $CURRENT_VERSION"
+          echo "Tag esperada:    $TAG"
+
+          if git show-ref --tags --verify --quiet "refs/tags/${TAG}"; then
+            TAG_COMMIT=$(git rev-list -n 1 "$TAG")
+
+            if [ "$TAG_COMMIT" = "$GITHUB_SHA" ]; then
+              echo "A tag $TAG já aponta para este commit; o release será reprocessado."
+              echo "release=true" >> "$GITHUB_OUTPUT"
+              echo "create_tag=false" >> "$GITHUB_OUTPUT"
+            elif [ "$VERSION_CHANGED" = "true" ]; then
+              echo "::error::A tag $TAG já existe em outro commit. Version: foi alterado para uma versão já lançada?"
+              exit 1
+            else
+              echo "Version: não mudou e a tag $TAG já existe; nada a fazer."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              echo "create_tag=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            if [ "$VERSION_CHANGED" = "false" ]; then
+              echo "::notice::A versão não mudou, mas a tag $TAG está ausente. A sincronização será reparada."
+            fi
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "create_tag=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Montar e validar pacote do plugin
+        id: package
+        if: steps.check.outputs.release == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          ./package.sh
+          ASSET="wp-formvault-${VERSION}.zip"
+          unzip -t "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Criar e enviar a tag
+        if: steps.check.outputs.create_tag == 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "WP FormVault $TAG"
+          git push origin "$TAG"
+
+      - name: Publicar release com o ZIP anexado
+        if: steps.check.outputs.release == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.check.outputs.tag }}
+          name: WP FormVault ${{ steps.check.outputs.tag }}
+          files: ${{ steps.package.outputs.asset }}
+          generate_release_notes: true
+          make_latest: true
