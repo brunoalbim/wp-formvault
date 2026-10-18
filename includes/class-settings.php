@@ -84,6 +84,7 @@ class WPFV_Settings {
 			'rdcrm_stage_id' => '',
 			'rdcrm_owner_id' => '',
 			'rdcrm_deal_title' => 'Lead: {name}',
+			'rdcrm_note_template' => '',
 			'rdcrm_field_map' => array(),
 			'validation' => self::validation_defaults(),
 			'antispam' => self::antispam_defaults(),

@@ -25,7 +25,25 @@ class WPFV_RDCRM_Integration implements WPFV_Integration {
 		$check=$api->get_deal($deal_id);$linked=$this->contact_ids($check);$ids['contact_ids_confirmed']=$linked;
 		if(!in_array((string)$contact_id,$linked,true)){$patch=$api->update_deal($deal_id,array('contact_ids'=>array((string)$contact_id)));$ids['link_patch_code']=isset($patch['code'])?$patch['code']:0;if(empty($patch['success']))return $this->from_api($patch,$ids);$check=$api->get_deal($deal_id);$linked=$this->contact_ids($check);$ids['contact_ids_confirmed']=$linked;}
 		if(!in_array((string)$contact_id,$linked,true))return $this->result(false,isset($check['code'])?$check['code']:0,$ids,'A negociação foi criada, mas o RD CRM não confirmou o vínculo com o contato. Consulte os dados de diagnóstico desta entrega.');
+		if(!empty($settings['rdcrm_note_template'])){
+			$note=$this->deliver_note($submission,$settings,$deal_id);
+			$note['body']=array_merge($ids,isset($note['body'])&&is_array($note['body'])?$note['body']:array());
+			return $note;
+		}
 		return $this->from_api($deal,$ids);
+	}
+	public function deliver_note($submission,$settings,$deal_id){
+		$api=new WPFV_RDCRM_API();
+		if(!$api->connected())return $this->result(false,0,array('operation'=>'note','deal_id'=>(string)$deal_id),'RD CRM não conectado.');
+		if(!preg_match('/^[0-9a-f]{24}$/i',(string)$deal_id))return $this->result(false,0,array('operation'=>'note','deal_id'=>(string)$deal_id),'Não foi possível identificar a negociação do RD CRM para criar a anotação.');
+		$fields=json_decode($submission->fields,true);$fields=is_array($fields)?$fields:array();
+		$template=isset($settings['rdcrm_note_template'])?$settings['rdcrm_note_template']:'';
+		$description=(new WPFV_Field_Mapper())->rdcrm_note($fields,$template);
+		if(''===$description)return $this->result(true,0,array('operation'=>'note','deal_id'=>(string)$deal_id,'note_skipped'=>true),'');
+		$note=$api->create_deal_note($deal_id,$description);
+		$body=array('operation'=>'note','deal_id'=>(string)$deal_id);
+		$note_id=$this->id($note);if($note_id)$body['note_id']=$note_id;
+		return $this->from_api($note,$body);
 	}
 	private function sync_organization($api,$data,$default_owner_id){
 		$name=$data['name'];$find=$api->find_organization($name);

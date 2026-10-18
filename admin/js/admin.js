@@ -28,18 +28,18 @@
 		}
 	}
 
-	document.querySelectorAll( '.wpfv-copy-subject-token' ).forEach( function ( button ) {
+	document.querySelectorAll( '.wpfv-insert-template-token' ).forEach( function ( button ) {
 		button.addEventListener( 'click', function () {
-			const status = document.querySelector( '.wpfv-copy-subject-status' );
-			if ( ! navigator.clipboard || ! navigator.clipboard.writeText ) {
-				if ( status ) status.textContent = 'Cópia indisponível. Selecione a variável para copiar.';
-				return;
-			}
-			navigator.clipboard.writeText( button.dataset.token ).then( function () {
-				if ( status ) status.textContent = button.dataset.token + ' copiado.';
-			} ).catch( function () {
-				if ( status ) status.textContent = 'Não foi possível copiar. Selecione a variável para copiar.';
-			} );
+			const target = document.getElementById( button.dataset.target );
+			const picker = button.closest( '.wpfv-variable-picker' );
+			const status = picker ? picker.querySelector( '.wpfv-variable-picker-status' ) : null;
+			if ( ! target ) return;
+			const start = typeof target.selectionStart === 'number' ? target.selectionStart : target.value.length;
+			const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : start;
+			target.value = target.value.slice( 0, start ) + button.dataset.token + target.value.slice( end );
+			target.focus();
+			target.setSelectionRange( start + button.dataset.token.length, start + button.dataset.token.length );
+			if ( status ) status.textContent = button.dataset.token + ' inserido.';
 		} );
 	} );
 

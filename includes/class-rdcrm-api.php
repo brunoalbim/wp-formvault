@@ -133,4 +133,5 @@ class WPFV_RDCRM_API {
 	public function create_deal( $data ) { return $this->request( 'POST', 'deals', $data ); }
 	public function get_deal( $id ) { return $this->request( 'GET', 'deals/' . rawurlencode( (string) $id ) ); }
 	public function update_deal( $id, $data ) { return $this->request( 'PATCH', 'deals/' . rawurlencode( (string) $id ), $data ); }
+	public function create_deal_note( $deal_id, $description ) { return $this->request( 'POST', 'deals/' . rawurlencode( (string) $deal_id ) . '/notes', array( 'description' => $description ) ); }
 }

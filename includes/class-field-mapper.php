@@ -95,6 +95,42 @@ class WPFV_Field_Mapper {
 		return $result;
 	}
 
+	/**
+	 * Compose a multiline RD CRM deal note from registered field IDs.
+	 *
+	 * @param array  $fields Submitted form fields.
+	 * @param string $template Note template containing {field_id} tokens.
+	 * @return string
+	 */
+	public function rdcrm_note( $fields, $template ) {
+		$template = sanitize_textarea_field( (string) $template );
+		if ( '' === trim( $template ) ) {
+			return '';
+		}
+
+		$message = preg_replace_callback(
+			'/\{([A-Za-z0-9_-]+)\}/',
+			function ( $matches ) use ( $fields ) {
+				$key = sanitize_key( $matches[1] );
+				if ( ! array_key_exists( $key, $fields ) ) {
+					return '';
+				}
+				$value = $fields[ $key ];
+				if ( is_array( $value ) ) {
+					$value = implode( ', ', array_map( 'sanitize_text_field', $value ) );
+				}
+				return is_scalar( $value ) ? sanitize_textarea_field( (string) $value ) : '';
+			},
+			$template
+		);
+
+		$message = trim( sanitize_textarea_field( (string) $message ) );
+		if ( function_exists( 'mb_substr' ) ) {
+			return mb_substr( $message, 0, 524288 );
+		}
+		return substr( $message, 0, 524288 );
+	}
+
 	private function template( $template, $fields ) {
 		return preg_replace_callback( '/\{([^}]+)\}/', function( $m ) use ( $fields ) { return isset( $fields[ $m[1] ] ) ? sanitize_text_field( $fields[ $m[1] ] ) : $m[0]; }, sanitize_text_field( $template ) );
 	}

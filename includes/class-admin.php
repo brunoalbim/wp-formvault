@@ -35,6 +35,7 @@ class WPFV_Admin {
 		add_action( 'wp_ajax_wpfv_pipedrive_catalog', array( $this, 'pipedrive_catalog' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_post_wpfv_retry_delivery', array( $this, 'retry_delivery' ) );
+		add_action( 'admin_post_wpfv_retry_rdcrm_note', array( $this, 'retry_rdcrm_note' ) );
 		add_action( 'admin_post_wpfv_delete_submission', array( $this, 'delete_submission' ) );
 		add_action( 'admin_post_wpfv_approve_spam', array( $this, 'approve_spam' ) );
 		add_action( 'admin_notices', array( $this, 'recaptcha_health_notice' ) );
@@ -134,11 +135,12 @@ class WPFV_Admin {
 			}
 			echo '<div class="wpfv-integration"><span class="wpfv-badge wpfv-badge--' . esc_attr( $status ) . '">' . esc_html( $icon . ' ' . $label ) . '</span>';
 			if ( 'error' === $status ) {
-				$retry_url = wp_nonce_url(
+				$note_failure = 'rdcrm' === $integration && $this->rdcrm_note_failure( $delivery );
+				$retry_url = $note_failure ? $this->rdcrm_note_retry_url( $submission->id ) : wp_nonce_url(
 					admin_url( 'admin-post.php?action=wpfv_retry_delivery&submission_id=' . (int) $submission->id . '&integration=' . sanitize_key( $integration ) ),
 					'wpfv_retry_' . (int) $submission->id . '_' . sanitize_key( $integration )
 				);
-				echo '<a class="button button-small wpfv-retry" href="' . esc_url( $retry_url ) . '">↻ Reenviar</a>';
+				echo '<a class="button button-small wpfv-retry" href="' . esc_url( $retry_url ) . '">↻ ' . esc_html( $note_failure ? 'Reenviar anotação' : 'Reenviar' ) . '</a>';
 			}
 			echo '</div>';
 		}
@@ -173,6 +175,46 @@ class WPFV_Admin {
 		$redirect_url     = $return_to_detail
 			? admin_url( 'admin.php?page=wpfv-submissions&view=' . $submission_id . '&retried=' . rawurlencode( $integration ) )
 			: admin_url( 'admin.php?page=wpfv-submissions&retried=1' );
+		wp_safe_redirect( $redirect_url );
+		exit;
+	}
+
+	/** Retry only a failed RD CRM note, reusing the deal created previously. */
+	public function retry_rdcrm_note() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) );
+		}
+
+		$submission_id = isset( $_GET['submission_id'] ) ? absint( $_GET['submission_id'] ) : 0;
+		check_admin_referer( 'wpfv_retry_rdcrm_note_' . $submission_id );
+		$submission = $this->repository->get( $submission_id );
+		$form       = $submission ? $this->registry->get( $submission->form_id ) : null;
+		if ( ! $submission || ! $form || ! in_array( $submission->status, array( 'stored', 'approved' ), true ) ) {
+			wp_die( esc_html__( 'Não foi possível localizar o contato.', 'wp-formvault' ) );
+		}
+
+		$deliveries = array_reverse( $this->repository->get_deliveries( $submission_id ) );
+		$failure    = null;
+		foreach ( $deliveries as $delivery ) {
+			if ( 'rdcrm' === sanitize_key( $delivery->integration ) ) {
+				$failure = $this->rdcrm_note_failure( $delivery );
+				break;
+			}
+		}
+		if ( ! $failure ) {
+			wp_die( esc_html__( 'A tentativa mais recente do RD CRM não possui uma anotação pendente.', 'wp-formvault' ) );
+		}
+
+		$settings    = WPFV_Settings::get_for_form( $form );
+		$delivery_id = $this->repository->create_delivery( $submission_id, 'rdcrm' );
+		$result      = ( new WPFV_RDCRM_Integration() )->deliver_note( $submission, $settings, $failure['deal_id'] );
+		$this->repository->complete_delivery( $delivery_id, $result );
+		$this->repository->log( ! empty( $result['success'] ) ? 'success' : 'error', 'rdcrm', ! empty( $result['success'] ) ? 'Anotação do RD CRM reenviada.' : ( isset( $result['error'] ) ? $result['error'] : 'Falha ao reenviar a anotação do RD CRM.' ), $result, $submission_id );
+
+		$return_to_detail = ! empty( $_GET['return_to_detail'] );
+		$redirect_url     = $return_to_detail
+			? admin_url( 'admin.php?page=wpfv-submissions&view=' . $submission_id . '&retried=rdcrm_note' )
+			: admin_url( 'admin.php?page=wpfv-submissions&retried=rdcrm_note' );
 		wp_safe_redirect( $redirect_url );
 		exit;
 	}
@@ -236,7 +278,7 @@ class WPFV_Admin {
 				<div><h1>Contato #<?php echo (int) $item->id; ?></h1><p class="wpfv-page-description"><?php echo esc_html( $item->form_name ); ?></p></div>
 				<div class="wpfv-detail-date"><span class="dashicons dashicons-calendar-alt" aria-hidden="true"></span><span><strong>Recebido em</strong><?php echo esc_html( $submitted_at ); ?></span></div>
 			</div>
-			<?php if ( isset( $_GET['retried'] ) ) : ?><div class="notice notice-success is-dismissible"><p><?php echo esc_html( ucfirst( sanitize_key( wp_unslash( $_GET['retried'] ) ) ) ); ?> reenviado. O resultado da nova tentativa aparece abaixo.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['retried'] ) ) : $retried = sanitize_key( wp_unslash( $_GET['retried'] ) ); ?><div class="notice notice-success is-dismissible"><p><?php echo esc_html( 'rdcrm_note' === $retried ? 'Anotação do RD CRM reenviada. O resultado da nova tentativa aparece abaixo.' : ucfirst( $retried ) . ' reenviado. O resultado da nova tentativa aparece abaixo.' ); ?></p></div><?php endif; ?>
 			<?php if ( isset( $_GET['approved'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Contato aprovado e enviado às integrações configuradas.</p></div><?php endif; ?>
 			<?php if ( 'spam' === $item->status ) : ?>
 				<div class="notice notice-warning inline wpfv-spam-review"><p><strong>Este contato está em quarentena.</strong> Nenhuma integração foi processada.</p><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Aprovar este contato e enviá-lo às integrações configuradas?');"><input type="hidden" name="action" value="wpfv_approve_spam"><input type="hidden" name="submission_id" value="<?php echo (int) $item->id; ?>"><?php wp_nonce_field( 'wpfv_approve_spam_' . (int) $item->id ); ?><button type="submit" class="button button-primary">Aprovar como legítimo</button></form></div>
@@ -378,6 +420,20 @@ class WPFV_Admin {
 		return wp_nonce_url( $url, 'wpfv_retry_' . absint( $submission_id ) . '_' . sanitize_key( $integration ) );
 	}
 
+	private function rdcrm_note_retry_url( $submission_id, $return_to_detail = false ) {
+		$url = admin_url( 'admin-post.php?action=wpfv_retry_rdcrm_note&submission_id=' . absint( $submission_id ) );
+		if ( $return_to_detail ) { $url = add_query_arg( 'return_to_detail', '1', $url ); }
+		return wp_nonce_url( $url, 'wpfv_retry_rdcrm_note_' . absint( $submission_id ) );
+	}
+
+	private function rdcrm_note_failure( $delivery ) {
+		if ( ! $delivery || 'error' !== $delivery->status || 'rdcrm' !== sanitize_key( $delivery->integration ) ) { return false; }
+		$body = json_decode( (string) $delivery->response_body, true );
+		if ( ! is_array( $body ) || 'note' !== ( isset( $body['operation'] ) ? $body['operation'] : '' ) ) { return false; }
+		$deal_id = isset( $body['deal_id'] ) ? (string) $body['deal_id'] : '';
+		return preg_match( '/^[0-9a-f]{24}$/i', $deal_id ) ? array( 'deal_id' => $deal_id ) : false;
+	}
+
 	private function integration_label( $integration ) {
 		$integration = sanitize_key( $integration );
 		return 'rdcrm' === $integration ? 'RD CRM' : ucfirst( $integration );
@@ -390,13 +446,15 @@ class WPFV_Admin {
 	private function integration_summary( $submission, $integration, $delivery ) {
 		$status      = in_array( $delivery->status, array( 'success', 'error', 'pending' ), true ) ? $delivery->status : 'pending';
 		$can_resend  = 'error' === $status || 'webhook' === $integration;
-		$button_text = 'webhook' === $integration ? 'Reenviar webhook' : 'Tentar novamente';
+		$note_failure = 'rdcrm' === $integration && $this->rdcrm_note_failure( $delivery );
+		$button_text = $note_failure ? 'Tentar novamente a anotação' : ( 'webhook' === $integration ? 'Reenviar webhook' : 'Tentar novamente' );
+		$retry_url = $note_failure ? $this->rdcrm_note_retry_url( $submission->id, true ) : $this->retry_url( $submission->id, $integration, true );
 		?>
 		<div class="wpfv-delivery-item">
 			<div><strong><?php echo esc_html( $this->integration_label( $integration ) ); ?></strong><span class="wpfv-badge wpfv-badge--<?php echo esc_attr( $status ); ?>"><?php echo esc_html( $this->status_label( $status ) ); ?><?php echo $delivery->response_code ? ' · HTTP ' . (int) $delivery->response_code : ''; ?></span></div>
 			<p>Última tentativa: <?php echo esc_html( get_date_from_gmt( $delivery->updated_at, 'd/m/Y H:i:s' ) ); ?></p>
 			<?php if ( $this->has_value( $delivery->error_message ) ) : ?><p class="wpfv-delivery-error"><?php echo esc_html( $delivery->error_message ); ?></p><?php endif; ?>
-			<?php if ( $can_resend ) : ?><a class="button button-secondary" href="<?php echo esc_url( $this->retry_url( $submission->id, $integration, true ) ); ?>"><span class="dashicons dashicons-update" aria-hidden="true"></span><?php echo esc_html( $button_text ); ?></a><?php endif; ?>
+			<?php if ( $can_resend ) : ?><a class="button button-secondary" href="<?php echo esc_url( $retry_url ); ?>"><span class="dashicons dashicons-update" aria-hidden="true"></span><?php echo esc_html( $button_text ); ?></a><?php endif; ?>
 		</div>
 		<?php
 	}
@@ -448,7 +506,7 @@ class WPFV_Admin {
 
 				<section id="wpfv-general" class="wpfv-tab-panel">
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Captação e armazenamento</h2><p>Controle o registro dos contatos recebidos.</p></div><div class="wpfv-card-body"><label><input type="checkbox" name="active" value="1" <?php checked( $settings['active'] ); ?>> Armazenar novos envios deste formulário</label></div></div>
-					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Notificação por e-mail</h2><p>Envie uma cópia do contato para sua equipe.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Ativação</th><td><label><input type="checkbox" name="email_enabled" value="1" <?php checked( $settings['email_enabled'] ); ?>> Enviar notificação por e-mail</label></td></tr><tr><th scope="row"><label for="wpfv-email-recipients">Destinatários</label></th><td><input id="wpfv-email-recipients" class="large-text" type="text" name="email_recipients" value="<?php echo esc_attr( $settings['email_recipients'] ); ?>"><p class="description">Separe múltiplos endereços por vírgula.</p></td></tr><tr><th scope="row"><label for="wpfv-email-subject">Assunto</label></th><td><input id="wpfv-email-subject" class="large-text" type="text" name="email_subject" value="<?php echo esc_attr( $settings['email_subject'] ); ?>"><p class="description">Variáveis disponíveis para o assunto (clique para copiar):</p><p class="wpfv-email-subject-tokens"><button type="button" class="button button-secondary wpfv-copy-subject-token" data-token="{site_name}" aria-label="Copiar {site_name}, nome do site"><code>{site_name}</code></button> Nome do site<br><button type="button" class="button button-secondary wpfv-copy-subject-token" data-token="{form_name}" aria-label="Copiar {form_name}, nome do formulário"><code>{form_name}</code></button> Nome do formulário<br><button type="button" class="button button-secondary wpfv-copy-subject-token" data-token="{form_id}" aria-label="Copiar {form_id}, identificador do formulário"><code>{form_id}</code></button> ID do formulário</p><p class="description wpfv-copy-subject-status" role="status" aria-live="polite"></p></td></tr></table></div></div>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Notificação por e-mail</h2><p>Envie uma cópia do contato para sua equipe.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Ativação</th><td><label><input type="checkbox" name="email_enabled" value="1" <?php checked( $settings['email_enabled'] ); ?>> Enviar notificação por e-mail</label></td></tr><tr><th scope="row"><label for="wpfv-email-recipients">Destinatários</label></th><td><input id="wpfv-email-recipients" class="large-text" type="text" name="email_recipients" value="<?php echo esc_attr( $settings['email_recipients'] ); ?>"><p class="description">Separe múltiplos endereços por vírgula.</p></td></tr><tr><th scope="row"><label for="wpfv-email-subject">Assunto</label></th><td><input id="wpfv-email-subject" class="large-text" type="text" name="email_subject" value="<?php echo esc_attr( $settings['email_subject'] ); ?>"><?php $this->template_variable_picker( 'wpfv-email-subject', array( '{site_name}' => 'Nome do site', '{form_name}' => 'Nome do formulário', '{form_id}' => 'ID do formulário' ) ); ?></td></tr></table></div></div>
 				</section>
 
 				<section id="wpfv-webhook" class="wpfv-tab-panel" hidden>
@@ -468,8 +526,14 @@ class WPFV_Admin {
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Negociação no RD CRM</h2><p>Crie ou atualize o contato e abra uma negociação associada.</p></div><div class="wpfv-card-body">
 						<p><label><input type="checkbox" name="rdcrm_enabled" value="1" <?php checked($settings['rdcrm_enabled']); ?>> Habilitar integração com o RD CRM</label></p><input type="hidden" name="rdcrm_catalog_ready" id="wpfv-rdcrm-catalog-ready" value="0">
 						<div class="wpfv-inline-fields"><label>Funil <select id="wpfv-rdcrm-pipeline" name="rdcrm_pipeline_id" data-selected="<?php echo esc_attr($settings['rdcrm_pipeline_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_pipeline_id']); ?>">— <?php echo $settings['rdcrm_pipeline_id'] ? 'Funil salvo; carregando' : 'Carregando'; ?> —</option></select></label><label>Etapa <select id="wpfv-rdcrm-stage" name="rdcrm_stage_id" data-selected="<?php echo esc_attr($settings['rdcrm_stage_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_stage_id']); ?>">— <?php echo $settings['rdcrm_stage_id'] ? 'Etapa salva; carregando' : 'Selecione o funil'; ?> —</option></select></label><label>Responsável <select id="wpfv-rdcrm-owner" name="rdcrm_owner_id" data-selected="<?php echo esc_attr($settings['rdcrm_owner_id']); ?>"><option value="<?php echo esc_attr($settings['rdcrm_owner_id']); ?>">— <?php echo $settings['rdcrm_owner_id'] ? 'Responsável salvo; carregando' : 'Carregando'; ?> —</option></select></label></div>
-						<p id="wpfv-rdcrm-catalog-status" class="wpfv-connection-status" role="status"></p><p><button type="button" class="button button-secondary" id="wpfv-rdcrm-refresh-catalogs">Atualizar dados do RD CRM</button> <span class="description">As listas são guardadas por 10 minutos.</span></p><p><label for="wpfv-rdcrm-deal-title"><strong>Título da negociação</strong></label><br><input id="wpfv-rdcrm-deal-title" class="large-text" type="text" name="rdcrm_deal_title" value="<?php echo esc_attr($settings['rdcrm_deal_title']); ?>"></p>
-					</div></div><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do RD CRM</h2><p>Nome e e-mail do contato são obrigatórios. A empresa só é consultada ou cadastrada quando o nome da empresa está mapeado e preenchido. Campos obrigatórios no RD CRM também precisam ser mapeados e preenchidos.</p></div><div class="wpfv-card-body"><?php $this->rdcrm_rows($settings['rdcrm_field_map'],$form); ?><p class="description">Se o formulário não tiver um campo correspondente, escolha “Valor fixo”. Para campos de seleção, use uma opção aceita pelo RD CRM.</p></div></div>
+						<p id="wpfv-rdcrm-catalog-status" class="wpfv-connection-status" role="status"></p><p><button type="button" class="button button-secondary" id="wpfv-rdcrm-refresh-catalogs">Atualizar dados do RD CRM</button> <span class="description">As listas são guardadas por 10 minutos.</span></p><p><label for="wpfv-rdcrm-deal-title"><strong>Título da negociação</strong></label><br><input id="wpfv-rdcrm-deal-title" class="large-text" type="text" name="rdcrm_deal_title" value="<?php echo esc_attr($settings['rdcrm_deal_title']); ?>"></p><?php $this->template_variable_picker( 'wpfv-rdcrm-deal-title', $this->form_template_variables( $form ) ); ?>
+						</div></div>
+						<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento do RD CRM</h2><p>Nome e e-mail do contato são obrigatórios. A empresa só é consultada ou cadastrada quando o nome da empresa está mapeado e preenchido. Campos obrigatórios no RD CRM também precisam ser mapeados e preenchidos.</p></div><div class="wpfv-card-body"><?php $this->rdcrm_rows($settings['rdcrm_field_map'],$form); ?><p class="description">Se o formulário não tiver um campo correspondente, escolha “Valor fixo”. Para campos de seleção, use uma opção aceita pelo RD CRM.</p></div></div>
+						<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Anotação no histórico</h2><p>Monte uma mensagem com dados do formulário para aparecer no histórico da negociação.</p></div><div class="wpfv-card-body">
+							<p><label for="wpfv-rdcrm-note-template"><strong>Modelo da anotação</strong></label><br><textarea id="wpfv-rdcrm-note-template" class="large-text code" rows="8" maxlength="524288" name="rdcrm_note_template" placeholder="Necessidade informada:&#10;{campo_id}"><?php echo esc_textarea($settings['rdcrm_note_template']); ?></textarea></p>
+							<p class="description">Deixe vazio para não criar uma anotação.</p>
+							<?php $this->template_variable_picker( 'wpfv-rdcrm-note-template', $this->form_template_variables( $form ) ); ?>
+						</div></div>
 				</section>
 				<?php endif; ?>
 
@@ -500,6 +564,20 @@ class WPFV_Admin {
 	}
 
 	private function field_options( $form, $selected = '' ) { foreach ( $form['fields'] as $id => $field ) { echo '<option value="' . esc_attr( $id ) . '" ' . selected( $selected, $id, false ) . '>' . esc_html( $field['label'] . ' (' . $id . ')' ) . '</option>'; } }
+	private function form_template_variables( $form ) {
+		$variables = array();
+		foreach ( $form['fields'] as $field_id => $field ) {
+			$variables[ '{' . $field_id . '}' ] = $field['label'];
+		}
+		return $variables;
+	}
+	private function template_variable_picker( $target_id, $variables ) {
+		echo '<details class="wpfv-variable-picker"><summary>Usar variáveis</summary><div class="wpfv-variable-picker-buttons">';
+		foreach ( $variables as $token => $label ) {
+			echo '<button type="button" class="button button-secondary wpfv-insert-template-token" data-target="' . esc_attr( $target_id ) . '" data-token="' . esc_attr( $token ) . '">' . esc_html( $label ) . ' <code>' . esc_html( $token ) . '</code></button>';
+		}
+		echo '</div><p class="description wpfv-variable-picker-status" role="status" aria-live="polite"></p></details>';
+	}
 	private function mapping_rows( $prefix, $rows, $form, $uppercase = false ) {
 		$rows        = $rows ? $rows : array( array( 'source' => '', 'target' => '' ) );
 		$placeholder = $uppercase ? 'EMAIL ou FNAME' : ( 'webhook' === $prefix ? 'Ex.: Área de atuação' : 'nome_da_chave' );
@@ -848,6 +926,7 @@ class WPFV_Admin {
 				'rdcrm_stage_id'=> $rd_stage_id,
 				'rdcrm_owner_id'=> $rd_owner_id,
 				'rdcrm_deal_title'=> $has_rdcrm&&isset($_POST['rdcrm_deal_title'])?sanitize_text_field(wp_unslash($_POST['rdcrm_deal_title'])):$current_settings['rdcrm_deal_title'],
+				'rdcrm_note_template'=> $has_rdcrm&&isset($_POST['rdcrm_note_template'])?sanitize_textarea_field(wp_unslash($_POST['rdcrm_note_template'])):$current_settings['rdcrm_note_template'],
 				'rdcrm_field_map'=> $rd_map,
 				'validation'=> $this->sanitize_validation(),
 				'antispam'=> array(
