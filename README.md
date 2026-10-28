@@ -36,7 +36,29 @@ add_filter( 'wpfv_registered_forms', function ( $forms ) {
 } );
 ```
 
-Tipos aceitos: `text`, `textarea`, `email`, `tel`, `url`, `integer`, `checkbox`, `select` e `hidden`. Em `select`, `options` é uma lista dos valores permitidos; o `value` enviado pelo HTML deve coincidir exatamente com um item dessa lista.
+Tipos aceitos: `text`, `textarea`, `email`, `tel`, `url`, `integer`, `checkbox`, `select`, `hidden` e `file`. Em `select`, `options` é uma lista dos valores permitidos; o `value` enviado pelo HTML deve coincidir exatamente com um item dessa lista.
+
+### Campos de arquivo (anexos)
+
+Declare um campo `file` para receber um arquivo por campo. Use `accept` com as extensões permitidas e `max_size` com o limite em MB:
+
+```php
+'curriculo' => array(
+	'label'    => 'Currículo',
+	'type'     => 'file',
+	'required' => true,
+	'accept'   => array( 'pdf', 'docx' ),
+	'max_size' => 5,
+),
+```
+
+- Sem `accept`, somente PDF é aceito; sem `max_size`, o limite é 5 MB. O limite efetivo nunca passa do limite de upload do servidor (`upload_max_filesize`/`post_max_size`).
+- Somente extensões permitidas pelo WordPress são aceitas, e o tipo é conferido pelo conteúdo real do arquivo. Extensões executáveis ou com script (PHP, HTML, SVG, JS etc.) são sempre recusadas, mesmo se declaradas.
+- A marcação precisa de `enctype="multipart/form-data"` e de `<input type="file" name="curriculo">`. O script do plugin preenche `accept` quando ausente, valida tipo e tamanho antes do envio e mostra as mensagens de erro de cada campo devolvidas pelo servidor.
+- O arquivo fica em uma pasta privada (`wp-content/uploads/wpfv-private/`, protegida por `.htaccess`, `web.config` e `index.php`) com nome aleatório. Em Nginx, bloqueie também essa pasta na configuração do servidor ou mova-a para fora da raiz pública com o filtro `wpfv_attachments_dir`.
+- Em **Contatos > Envios**, o detalhe do envio lista os anexos com download restrito a administradores. O campo do envio guarda apenas o nome do arquivo, que é o que CRMs e mapeamentos recebem.
+- **Entregas:** o e-mail de notificação leva os arquivos anexados (até 20 MB somados por mensagem, ajustável pelo filtro `wpfv_email_attachments_max_bytes`; acima disso, o e-mail indica que o arquivo deve ser baixado no painel). O webhook recebe os arquivos em `form.attachments` (ver abaixo). Pipedrive, Brevo e RD CRM não recebem arquivos.
+- **Retenção:** em **Contatos > Configurações > Anexos**, o prazo de retenção vale para os anexos de todos os formulários. Vazio mantém os arquivos sem prazo. Após o prazo, a limpeza diária apaga o arquivo e mantém no envio somente nome, tamanho e data. Excluir um envio apaga seus anexos; envios em spam são apagados com os anexos após 90 dias.
 
 ### 2. Criar a marcação
 
@@ -142,6 +164,22 @@ O webhook envia o ID do formulário tanto em `source` quanto em `form.source`. O
 		}
 	}
 }
+```
+
+Quando o envio tem anexos, `form.attachments` lista cada arquivo com o conteúdo em Base64 e o timeout da requisição passa a 30 segundos. Se o arquivo já foi removido pela retenção (por exemplo, num reenvio manual), `available` é `false` e `content_base64` é `null`. A assinatura `X-WP-FormVault-Signature` cobre o corpo inteiro, inclusive os arquivos.
+
+```json
+"attachments": [
+	{
+		"field": "curriculo",
+		"name": "curriculo-maria.pdf",
+		"mime_type": "application/pdf",
+		"size": 182340,
+		"sha256": "9f2c…",
+		"available": true,
+		"content_base64": "JVBERi0xLjQK…"
+	}
+]
 ```
 
 ## Extensão

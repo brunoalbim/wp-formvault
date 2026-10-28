@@ -46,6 +46,7 @@ class WPFV_Submission_Repository {
 		$logs        = $wpdb->prefix . 'wpfv_logs';
 		$deliveries  = $wpdb->prefix . 'wpfv_deliveries';
 
+		( new WPFV_Attachments() )->delete_for_spam_before( $cutoff );
 		$wpdb->query( 'START TRANSACTION' );
 		$logs_deleted = $wpdb->query(
 			$wpdb->prepare(
@@ -163,6 +164,7 @@ class WPFV_Submission_Repository {
 		$id = absint( $id );
 		if ( ! $id || ! $this->get( $id ) ) { return false; }
 		$wpdb->query( 'START TRANSACTION' );
+		( new WPFV_Attachments() )->delete_for_submission( $id );
 		$logs       = $wpdb->delete( $wpdb->prefix . 'wpfv_logs', array( 'submission_id' => $id ), array( '%d' ) );
 		$deliveries = $wpdb->delete( $wpdb->prefix . 'wpfv_deliveries', array( 'submission_id' => $id ), array( '%d' ) );
 		$submission = $wpdb->delete( $wpdb->prefix . 'wpfv_submissions', array( 'id' => $id ), array( '%d' ) );

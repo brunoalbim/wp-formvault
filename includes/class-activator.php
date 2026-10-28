@@ -22,6 +22,7 @@ class WPFV_Activator {
 		$submissions     = $wpdb->prefix . 'wpfv_submissions';
 		$deliveries      = $wpdb->prefix . 'wpfv_deliveries';
 		$logs            = $wpdb->prefix . 'wpfv_logs';
+		$attachments     = $wpdb->prefix . 'wpfv_attachments';
 
 		$sql_submissions = "CREATE TABLE {$submissions} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -75,10 +76,27 @@ class WPFV_Activator {
 			KEY created_at (created_at)
 		) {$charset_collate};";
 
+		$sql_attachments = "CREATE TABLE {$attachments} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			submission_id bigint(20) unsigned NOT NULL,
+			field_id varchar(100) NOT NULL,
+			original_name varchar(255) NOT NULL DEFAULT '',
+			stored_name varchar(255) NOT NULL DEFAULT '',
+			mime_type varchar(100) NOT NULL DEFAULT '',
+			size bigint(20) unsigned NOT NULL DEFAULT 0,
+			sha256 char(64) NOT NULL DEFAULT '',
+			created_at datetime NOT NULL,
+			purged_at datetime NULL DEFAULT NULL,
+			PRIMARY KEY  (id),
+			KEY submission_id (submission_id),
+			KEY purged_created (purged_at,created_at)
+		) {$charset_collate};";
+
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql_submissions );
 		dbDelta( $sql_deliveries );
 		dbDelta( $sql_logs );
+		dbDelta( $sql_attachments );
 
 		update_option( 'wpfv_version', WPFV_VERSION, false );
 	}

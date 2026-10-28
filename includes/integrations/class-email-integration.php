@@ -87,17 +87,40 @@ class WPFV_Email_Integration implements WPFV_Integration {
 			}
 		}
 
+		$files = array();
+		$notes = array();
+		$store = new WPFV_Attachments();
+		$limit = (int) apply_filters( 'wpfv_email_attachments_max_bytes', 20 * MB_IN_BYTES, $submission, $form );
+		$total = 0;
+		foreach ( $store->for_submission( $submission->id ) as $attachment ) {
+			$path = $store->path( $attachment );
+			if ( ! $path ) {
+				$notes[] = $this->labeled_line( $attachment->original_name, __( 'arquivo removido pela política de retenção', 'wp-formvault' ) );
+			} elseif ( $total + (int) $attachment->size > $limit ) {
+				$notes[] = $this->labeled_line( $attachment->original_name, __( 'não anexado por exceder o limite do e-mail; baixe no painel', 'wp-formvault' ) );
+			} else {
+				$name           = isset( $files[ $attachment->original_name ] ) ? $attachment->id . '-' . $attachment->original_name : $attachment->original_name;
+				$files[ $name ] = $path;
+				$total         += (int) $attachment->size;
+			}
+		}
+		if ( $notes ) {
+			$lines[] = '';
+			$lines[] = '<strong>Anexos não incluídos:</strong>';
+			$lines   = array_merge( $lines, $notes );
+		}
+
 		$headers = array( 'Content-Type: text/html; charset=UTF-8' );
 		if ( is_email( $submission->primary_email ) ) {
 			$headers[] = sprintf( 'Reply-To: %s <%s>', $submission->primary_name, $submission->primary_email );
 		}
 
-		$sent = wp_mail( $recipients, sanitize_text_field( $subject ), implode( "<br>\n", $lines ), $headers );
+		$sent = wp_mail( $recipients, sanitize_text_field( $subject ), implode( "<br>\n", $lines ), $headers, $files );
 
 		return array(
 			'success' => (bool) $sent,
 			'code'    => $sent ? 200 : 0,
-			'body'    => array( 'recipients' => $recipients ),
+			'body'    => array( 'recipients' => $recipients, 'attachments' => array_keys( $files ) ),
 			'error'   => $sent ? '' : 'wp_mail() não confirmou o envio.',
 		);
 	}

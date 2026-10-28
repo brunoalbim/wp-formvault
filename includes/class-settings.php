@@ -20,6 +20,7 @@ class WPFV_Settings {
 			'rdcrm_refresh_token' => '', 'rdcrm_token_expires_at' => 0,
 			'recaptcha_project_id' => '', 'recaptcha_site_key' => '', 'recaptcha_api_key' => '',
 			'logging_enabled' => true, 'log_retention_days' => 90,
+			'attachment_retention_days' => 0,
 		);
 	}
 
