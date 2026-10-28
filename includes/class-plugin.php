@@ -63,6 +63,8 @@ final class WPFV_Plugin {
 			$repository = new WPFV_Submission_Repository();
 			$repository->purge_expired_logs();
 			$repository->purge_expired_spam( 90 );
+			$global = WPFV_Settings::get_global();
+			( new WPFV_Attachments() )->purge_expired( $global['attachment_retention_days'] );
 			update_option( 'wpfv_last_log_cleanup', time(), false );
 		}
 	}

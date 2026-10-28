@@ -31,6 +31,10 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 				'utm'    => (object) $this->last_utm( json_decode( $submission->attribution, true ) ),
 			),
 		);
+		$attachments = $this->attachments( $submission );
+		if ( $attachments ) {
+			$payload['form']['attachments'] = $attachments;
+		}
 		$body    = wp_json_encode( $payload );
 		$headers = array(
 			'Content-Type'                => 'application/json; charset=utf-8',
@@ -44,7 +48,7 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 
 		$response = wp_safe_remote_post(
 			$url,
-			array( 'timeout' => 10, 'redirection' => 2, 'headers' => $headers, 'body' => $body, 'data_format' => 'body' )
+			array( 'timeout' => $attachments ? 30 : 10, 'redirection' => 2, 'headers' => $headers, 'body' => $body, 'data_format' => 'body' )
 		);
 
 		if ( is_wp_error( $response ) ) {
@@ -58,6 +62,31 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 			'body'    => substr( wp_remote_retrieve_body( $response ), 0, 2000 ),
 			'error'   => $code >= 200 && $code < 300 ? '' : 'O webhook respondeu com HTTP ' . $code . '.',
 		);
+	}
+
+	/**
+	 * Files of the submission, with Base64 content while they are still stored.
+	 *
+	 * @param object $submission Stored submission.
+	 * @return array
+	 */
+	private function attachments( $submission ) {
+		$store = new WPFV_Attachments();
+		$items = array();
+		foreach ( $store->for_submission( $submission->id ) as $attachment ) {
+			$path    = $store->path( $attachment );
+			$content = $path ? file_get_contents( $path ) : false; // phpcs:ignore WordPress.WP.AlternativeFunctions
+			$items[] = array(
+				'field'          => sanitize_key( $attachment->field_id ),
+				'name'           => $attachment->original_name,
+				'mime_type'      => $attachment->mime_type,
+				'size'           => (int) $attachment->size,
+				'sha256'         => $attachment->sha256,
+				'available'      => false !== $content,
+				'content_base64' => false !== $content ? base64_encode( $content ) : null,
+			);
+		}
+		return $items;
 	}
 
 	private function last_utm( $attribution ) {

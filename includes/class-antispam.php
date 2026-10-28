@@ -30,9 +30,10 @@ class WPFV_Antispam {
 	}
 
 	/** Run checks that can safely reject before field processing or provider calls. */
-	public function early_check( $form_id ) {
+	public function early_check( $form_id, $form = null ) {
 		$content_length = isset( $_SERVER['CONTENT_LENGTH'] ) ? absint( $_SERVER['CONTENT_LENGTH'] ) : 0;
-		if ( $content_length > 131072 ) {
+		$allowed_length = 131072 + ( is_array( $form ) ? WPFV_Attachments::form_max_bytes( $form ) : 0 );
+		if ( $content_length > $allowed_length ) {
 			return 'oversized_request';
 		}
 

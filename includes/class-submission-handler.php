@@ -23,6 +23,9 @@ class WPFV_Submission_Handler {
 		add_action( 'admin_post_wpfv_submit_form', array( $this, 'handle' ) );
 		add_action( 'wp_ajax_nopriv_wpfv_submit_form', array( $this, 'handle' ) );
 		add_action( 'wp_ajax_wpfv_submit_form', array( $this, 'handle' ) );
+		// PHP discards the whole body above post_max_size, including `action`.
+		add_action( 'admin_post_nopriv_', array( $this, 'handle_oversized' ) );
+		add_action( 'admin_post_', array( $this, 'handle_oversized' ) );
 	}
 
 	/**
@@ -45,7 +48,11 @@ class WPFV_Submission_Handler {
 			$this->respond( 'invalid', $form_id, $form );
 		}
 
-		$early_reason = $guard->early_check( $form_id );
+		$early_reason = $guard->early_check( $form_id, $form );
+		if ( 'oversized_request' === $early_reason && WPFV_Attachments::form_max_bytes( $form ) ) {
+			WPFV_Antispam::increment_metric( $form_id, $early_reason );
+			$this->respond( 'too_large', $form_id, $form );
+		}
 		if ( $early_reason ) {
 			WPFV_Antispam::increment_metric( $form_id, $early_reason );
 			$this->respond( 'success', $form_id, $form );
@@ -61,7 +68,26 @@ class WPFV_Submission_Handler {
 		$messages = array();
 		$malformed = false;
 		$validation = isset( $settings['validation'] ) ? $settings['validation'] : WPFV_Settings::validation_defaults();
+		$attachments = new WPFV_Attachments();
+		$uploads     = array();
 		foreach ( $form['fields'] as $field_id => $definition ) {
+			if ( 'file' === $definition['type'] ) {
+				$check = $attachments->validate_upload( $field_id, $definition );
+				if ( 'valid' === $check['status'] ) {
+					$uploads[]           = $check['upload'];
+					$fields[ $field_id ] = $check['upload']['original_name'];
+					continue;
+				}
+				if ( 'invalid' === $check['status'] ) {
+					$errors[]              = $field_id;
+					$messages[ $field_id ] = $check['message'];
+				} elseif ( $definition['required'] ) {
+					$errors[]              = $field_id;
+					$messages[ $field_id ] = __( 'Anexe o arquivo solicitado.', 'wp-formvault' );
+				}
+				$fields[ $field_id ] = '';
+				continue;
+			}
 			$raw_value = isset( $_POST[ $field_id ] ) ? wp_unslash( $_POST[ $field_id ] ) : '';
 			if ( is_array( $raw_value ) || is_object( $raw_value ) ) {
 				$raw_value = '';
@@ -106,7 +132,7 @@ class WPFV_Submission_Handler {
 			$this->respond( 'success', $form_id, $form );
 		}
 
-		$fingerprint = $guard->fingerprint( $form_id, $fields );
+		$fingerprint = $guard->fingerprint( $form_id, array_merge( $fields, array( '__files' => wp_list_pluck( $uploads, 'sha256' ) ) ) );
 		if ( $guard->is_duplicate( $fingerprint ) ) {
 			WPFV_Antispam::increment_metric( $form_id, 'duplicate' );
 			$this->respond( 'success', $form_id, $form );
@@ -128,6 +154,12 @@ class WPFV_Submission_Handler {
 			}
 		}
 
+		$stored_files = $attachments->store( $uploads );
+		if ( false === $stored_files ) {
+			$this->repository->log( 'error', 'attachments', 'Não foi possível gravar o anexo no armazenamento privado.', array( 'form_id' => $form_id, 'directory' => WPFV_Attachments::dir() ) );
+			$this->respond( 'error', $form_id, $form );
+		}
+
 		$attribution = $this->sanitize_attribution();
 		$primary     = $this->find_primary_fields( $fields, $form['fields'] );
 		$stored_id   = $this->repository->create(
@@ -145,9 +177,11 @@ class WPFV_Submission_Handler {
 			)
 		);
 
-		if ( is_wp_error( $stored_id ) ) {
+		if ( is_wp_error( $stored_id ) || ! $stored_id ) {
+			$attachments->remove_files( $stored_files );
 			$this->respond( 'error', $form_id, $form );
 		}
+		$attachments->attach( $stored_id, $stored_files );
 		$guard->remember( $fingerprint, $stored_id );
 
 		if ( 'spam' === $status ) {
@@ -160,6 +194,20 @@ class WPFV_Submission_Handler {
 		$this->manager->process( $stored_id, $form );
 		$this->repository->log( 'success', 'submission', 'Contato armazenado.', array( 'form_id' => $form_id, 'score' => isset( $risk_data['score'] ) ? $risk_data['score'] : null ), $stored_id );
 		$this->respond( 'success', $form_id, $form, array(), $stored_id );
+	}
+
+	/** Redirect a non-JavaScript submission whose body PHP discarded for exceeding post_max_size. */
+	public function handle_oversized() {
+		if ( empty( $_POST ) && $this->exceeds_server_limit() ) {
+			$this->respond( 'too_large', '' );
+		}
+	}
+
+	/** Whether PHP discarded the body because it exceeded post_max_size. */
+	private function exceeds_server_limit() {
+		$length = isset( $_SERVER['CONTENT_LENGTH'] ) ? absint( $_SERVER['CONTENT_LENGTH'] ) : 0;
+		$limit  = wp_convert_hr_to_bytes( (string) ini_get( 'post_max_size' ) );
+		return $length > 0 && $limit > 0 && $length > $limit;
 	}
 
 	private function maximum_length( $type ) {
@@ -234,6 +282,7 @@ class WPFV_Submission_Handler {
 			'error'        => __( 'Não foi possível registrar sua mensagem agora. Tente novamente em instantes.', 'wp-formvault' ),
 			'disabled'     => __( 'Este formulário não está disponível no momento.', 'wp-formvault' ),
 			'unknown_form' => __( 'Formulário não reconhecido.', 'wp-formvault' ),
+			'too_large'    => __( 'Os arquivos enviados excedem o tamanho permitido. Reduza o arquivo e tente novamente.', 'wp-formvault' ),
 		);
 		$message  = isset( $messages[ $status ] ) ? $messages[ $status ] : $messages['error'];
 
@@ -251,7 +300,7 @@ class WPFV_Submission_Handler {
 				wp_send_json_success( $data );
 			}
 
-			$http_status = 'invalid' === $status ? 422 : ( 'unknown_form' === $status || 'disabled' === $status ? 400 : 500 );
+			$http_status = 'invalid' === $status ? 422 : ( 'too_large' === $status ? 413 : ( 'unknown_form' === $status || 'disabled' === $status ? 400 : 500 ) );
 			wp_send_json_error( $data, $http_status );
 		}
 

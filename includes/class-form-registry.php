@@ -76,7 +76,7 @@ class WPFV_Form_Registry {
 	 */
 	private function normalize_fields( $fields ) {
 		$normalized = array();
-		$types      = array( 'text', 'textarea', 'email', 'tel', 'url', 'integer', 'checkbox', 'select', 'hidden' );
+		$types      = array( 'text', 'textarea', 'email', 'tel', 'url', 'integer', 'checkbox', 'select', 'hidden', 'file' );
 
 		foreach ( $fields as $field_id => $field ) {
 			$field_id = sanitize_key( $field_id );
@@ -95,6 +95,10 @@ class WPFV_Form_Registry {
 				'required' => ! empty( $field['required'] ),
 				'options'  => isset( $field['options'] ) && is_array( $field['options'] ) ? array_map( 'sanitize_text_field', $field['options'] ) : array(),
 			);
+			if ( 'file' === $type ) {
+				$normalized[ $field_id ]['accept']   = WPFV_Attachments::normalize_extensions( isset( $field['accept'] ) ? $field['accept'] : array() );
+				$normalized[ $field_id ]['max_size'] = isset( $field['max_size'] ) && is_numeric( $field['max_size'] ) && $field['max_size'] > 0 ? (float) $field['max_size'] : WPFV_Attachments::DEFAULT_MAX_SIZE_MB;
+			}
 		}
 
 		return $normalized;

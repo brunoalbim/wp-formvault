@@ -16,11 +16,23 @@ class WPFV_Assets {
 
 	public function enqueue() {
 		$validation_forms = array();
+		$file_forms       = array();
 		$recaptcha_forms  = array();
 		$registry = WPFV_Plugin::instance()->registry();
 		foreach ( $registry->all() as $form ) {
 			$settings = WPFV_Settings::get_for_form( $form );
 			$validation_forms[ $form['id'] ] = $settings['validation'];
+			foreach ( $form['fields'] as $field_id => $field ) {
+				if ( 'file' === $field['type'] ) {
+					$max = WPFV_Attachments::max_bytes( $field );
+					$file_forms[ $form['id'] ][ $field_id ] = array(
+						'accept'      => $field['accept'],
+						'maxBytes'    => $max,
+						'sizeMessage' => sprintf( __( 'O arquivo excede o limite de %s.', 'wp-formvault' ), WPFV_Attachments::format_size( $max ) ),
+						'typeMessage' => sprintf( __( 'Formato não permitido. Envie: %s.', 'wp-formvault' ), strtoupper( implode( ', ', $field['accept'] ) ) ),
+					);
+				}
+			}
 			if ( ! empty( $settings['antispam']['recaptcha_enabled'] ) && WPFV_Recaptcha::configured() ) {
 				$recaptcha_forms[ $form['id'] ] = array( 'action' => WPFV_Recaptcha::action_name( $form['id'] ) );
 			}
@@ -45,6 +57,7 @@ class WPFV_Assets {
 				'sendingLabel' => __( 'Enviando…', 'wp-formvault' ),
 				'networkError' => __( 'Não foi possível enviar agora. Verifique sua conexão e tente novamente.', 'wp-formvault' ),
 				'validations'  => $validation_forms,
+				'files'        => $file_forms,
 				'attribution'  => array(
 					'sources' => $this->attribution_source_aliases(),
 				),

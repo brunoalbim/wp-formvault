@@ -37,6 +37,7 @@ class WPFV_Admin {
 		add_action( 'admin_post_wpfv_retry_delivery', array( $this, 'retry_delivery' ) );
 		add_action( 'admin_post_wpfv_retry_rdcrm_note', array( $this, 'retry_rdcrm_note' ) );
 		add_action( 'admin_post_wpfv_delete_submission', array( $this, 'delete_submission' ) );
+		add_action( 'admin_post_wpfv_download_attachment', array( $this, 'download_attachment' ) );
 		add_action( 'admin_post_wpfv_approve_spam', array( $this, 'approve_spam' ) );
 		add_action( 'admin_notices', array( $this, 'recaptcha_health_notice' ) );
 	}
@@ -219,6 +220,24 @@ class WPFV_Admin {
 		exit;
 	}
 
+	/** Stream a private attachment to an administrator. */
+	public function download_attachment() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) ); }
+		$id = isset( $_GET['attachment_id'] ) ? absint( $_GET['attachment_id'] ) : 0;
+		check_admin_referer( 'wpfv_download_attachment_' . $id );
+		$store      = new WPFV_Attachments();
+		$attachment = $store->get( $id );
+		$path       = $store->path( $attachment );
+		if ( ! $path ) { wp_die( esc_html__( 'Arquivo indisponível. Ele pode ter sido removido pela política de retenção.', 'wp-formvault' ) ); }
+		nocache_headers();
+		header( 'Content-Type: ' . ( $attachment->mime_type ? $attachment->mime_type : 'application/octet-stream' ) );
+		header( 'Content-Length: ' . filesize( $path ) );
+		header( 'Content-Disposition: attachment; filename="' . str_replace( array( '"', "\r", "\n" ), '', $attachment->original_name ) . '"; filename*=UTF-8\'\'' . rawurlencode( $attachment->original_name ) );
+		header( 'X-Content-Type-Options: nosniff' );
+		readfile( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		exit;
+	}
+
 	public function delete_submission() {
 		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) ); }
 		$id = isset( $_POST['submission_id'] ) ? absint( $_POST['submission_id'] ) : 0;
@@ -286,6 +305,7 @@ class WPFV_Admin {
 
 			<div class="wpfv-detail-grid">
 				<?php $this->detail_card( 'Campos preenchidos', 'dashicons-feedback', $fields, $form ); ?>
+				<?php $this->attachments_card( $item->id, $form ); ?>
 				<?php
 				$source = array();
 				if ( $this->has_value( $item->source_url ) ) {
@@ -315,6 +335,29 @@ class WPFV_Admin {
 				</div>
 			</section>
 		</div>
+		<?php
+	}
+
+	private function attachments_card( $submission_id, $form ) {
+		$store       = new WPFV_Attachments();
+		$attachments = $store->for_submission( $submission_id );
+		if ( ! $attachments ) { return; }
+		?>
+		<section class="card wpfv-admin-card wpfv-detail-card">
+			<div class="wpfv-card-header"><h2><span class="dashicons dashicons-paperclip" aria-hidden="true"></span>Anexos</h2></div>
+			<div class="wpfv-card-body"><dl class="wpfv-detail-list">
+			<?php foreach ( $attachments as $attachment ) :
+				$label = $form && isset( $form['fields'][ $attachment->field_id ]['label'] ) ? $form['fields'][ $attachment->field_id ]['label'] : $attachment->field_id;
+				$url   = wp_nonce_url( admin_url( 'admin-post.php?action=wpfv_download_attachment&attachment_id=' . (int) $attachment->id ), 'wpfv_download_attachment_' . (int) $attachment->id );
+			?>
+				<div><dt><?php echo esc_html( $label ); ?></dt><dd>
+				<?php if ( $store->path( $attachment ) ) : ?><a href="<?php echo esc_url( $url ); ?>"><?php echo esc_html( $attachment->original_name ); ?></a> <span class="description">(<?php echo esc_html( WPFV_Attachments::format_size( (int) $attachment->size ) ); ?>)</span>
+				<?php elseif ( $attachment->purged_at ) : ?><?php echo esc_html( $attachment->original_name ); ?> — <em><?php echo esc_html( sprintf( 'removido pela retenção em %s', get_date_from_gmt( $attachment->purged_at, 'd/m/Y' ) ) ); ?></em>
+				<?php else : ?><?php echo esc_html( $attachment->original_name ); ?> — <em>arquivo não encontrado no armazenamento</em><?php endif; ?>
+				</dd></div>
+			<?php endforeach; ?>
+			</dl></div>
+		</section>
 		<?php
 	}
 
@@ -636,11 +679,12 @@ class WPFV_Admin {
 			<?php if ( isset( $_GET['rdcrm'] ) ) : ?><div class="notice notice-<?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'success':'warning'; ?> is-dismissible"><p><?php echo 'connected'===sanitize_key(wp_unslash($_GET['rdcrm']))?'RD CRM conectado com sucesso.':'Estado da conexão do RD CRM atualizado.'; ?></p></div><?php endif; ?>
 			<?php $rdcrm_error = get_transient( 'wpfv_rdcrm_error_' . get_current_user_id() ); if ( $rdcrm_error && false !== strpos( $rdcrm_error, '(HTTP 429)' ) ) { delete_transient( 'wpfv_rdcrm_error_' . get_current_user_id() ); $rdcrm_error = false; } if ( $rdcrm_error ) : ?><div class="notice notice-error"><p><?php echo esc_html( $rdcrm_error ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-logs' ) ); ?>">Ver logs</a></p><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"><input type="hidden" name="action" value="wpfv_dismiss_rdcrm_error"><?php wp_nonce_field( 'wpfv_dismiss_rdcrm_error' ); ?><p><button type="submit" class="button">Dispensar aviso</button></p></form></div><?php endif; ?>
 			<?php if ( ! $rdcrm_error && ( new WPFV_RDCRM_API() )->connected() && isset( $rdcrm_health['status'] ) && 'error' === $rdcrm_health['status'] ) : ?><div class="notice notice-error"><p><?php echo esc_html( $rdcrm_health['message'] ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-logs' ) ); ?>">Ver logs</a></p></div><?php endif; ?>
-			<nav class="nav-tab-wrapper" aria-label="Seções de configuração"><a href="#wpfv-settings-logs" class="nav-tab nav-tab-active wpfv-nav-tab">Logs</a><a href="#wpfv-settings-antispam" class="nav-tab wpfv-nav-tab">Antispam</a><a href="#wpfv-settings-integrations" class="nav-tab wpfv-nav-tab">Integrações</a></nav>
+			<nav class="nav-tab-wrapper" aria-label="Seções de configuração"><a href="#wpfv-settings-logs" class="nav-tab nav-tab-active wpfv-nav-tab">Logs</a><a href="#wpfv-settings-attachments" class="nav-tab wpfv-nav-tab">Anexos</a><a href="#wpfv-settings-antispam" class="nav-tab wpfv-nav-tab">Antispam</a><a href="#wpfv-settings-integrations" class="nav-tab wpfv-nav-tab">Integrações</a></nav>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'wpfv_save_global' ); ?>
 				<input type="hidden" name="action" value="wpfv_save_global_settings">
 				<section id="wpfv-settings-logs" class="wpfv-tab-panel"><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Logs</h2><p>Defina por quanto tempo os eventos das integrações serão mantidos.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Registro</th><td><label><input type="checkbox" name="logging_enabled" value="1" <?php checked( $s['logging_enabled'] ); ?>> Registrar eventos das integrações</label></td></tr><tr><th scope="row"><label for="wpfv-retention">Retenção</label></th><td><input id="wpfv-retention" class="small-text" type="number" min="1" max="3650" name="log_retention_days" value="<?php echo absint( $s['log_retention_days'] ); ?>"> dias</td></tr></table></div></div></section>
+				<section id="wpfv-settings-attachments" class="wpfv-tab-panel" hidden><div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Anexos</h2><p>Regra geral para os arquivos recebidos por todos os formulários.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row"><label for="wpfv-attachment-retention">Prazo de retenção</label></th><td><input id="wpfv-attachment-retention" class="small-text" type="number" min="0" max="3650" name="attachment_retention_days" value="<?php echo absint( $s['attachment_retention_days'] ) ?: ''; ?>" placeholder="—"> dias<p class="description">Após o prazo, o arquivo é apagado e o envio mantém apenas o nome, o tamanho e a data. Deixe vazio para manter os anexos sem prazo.</p><p class="description">Os arquivos ficam em uma pasta privada (<code><?php echo esc_html( str_replace( ABSPATH, '', WPFV_Attachments::dir() ) ); ?></code>) e só podem ser baixados por administradores no detalhe do envio. Excluir um envio apaga seus anexos.</p></td></tr></table></div></div></section>
 				<section id="wpfv-settings-antispam" class="wpfv-tab-panel" hidden><div class="wpfv-settings-stack">
 					<?php if ( ! empty( $recaptcha_health['message'] ) ) : ?><div class="notice notice-<?php echo esc_attr( 'error' === $recaptcha_health['status'] ? 'error' : ( 'warning' === $recaptcha_health['status'] ? 'warning' : 'success' ) ); ?> inline"><p><?php echo esc_html( $recaptcha_health['message'] ); ?><?php if ( ! empty( $recaptcha_health['detail'] ) ) : ?> <strong>Diagnóstico:</strong> <?php echo esc_html( $recaptcha_health['detail'] ); ?>.<?php endif; ?><?php if ( ! empty( $recaptcha_health['time'] ) ) : ?> <small>Último evento: <?php echo esc_html( get_date_from_gmt( gmdate( 'Y-m-d H:i:s', absint( $recaptcha_health['time'] ) ), 'd/m/Y H:i' ) ); ?>.</small><?php endif; ?></p></div><?php endif; ?>
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Google Cloud reCAPTCHA</h2><p>Use um projeto pertencente ao cliente e uma chave baseada em pontuação.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row"><label for="wpfv-recaptcha-project">Project ID</label></th><td><input id="wpfv-recaptcha-project" class="large-text code" type="text" name="recaptcha_project_id" value="<?php echo esc_attr( $s['recaptcha_project_id'] ); ?>" autocomplete="off"></td></tr><tr><th scope="row"><label for="wpfv-recaptcha-site-key">Site key</label></th><td><input id="wpfv-recaptcha-site-key" class="large-text code" type="text" name="recaptcha_site_key" value="<?php echo esc_attr( $s['recaptcha_site_key'] ); ?>" autocomplete="off"></td></tr><tr><th scope="row"><label for="wpfv-recaptcha-api-key">API key</label></th><td><input id="wpfv-recaptcha-api-key" class="large-text" type="password" name="recaptcha_api_key" value="" placeholder="<?php echo $s['recaptcha_api_key'] ? esc_attr__( 'Chave configurada — deixe vazio para manter', 'wp-formvault' ) : ''; ?>" autocomplete="new-password"><p class="description">Use uma chave de API do Google Cloud vinculada ao Project ID; a chave secreta legada do reCAPTCHA não funciona neste campo. Ela nunca é enviada ao navegador nem registrada nos logs.</p><p><button type="button" class="button button-secondary wpfv-test" data-action="wpfv_test_recaptcha">Testar conexão</button> <span class="wpfv-test-result wpfv-connection-status" role="status"></span></p><p class="description">O teste usa as credenciais já salvas e faz uma avaliação com token inválido de propósito. Ele consome uma chamada da API e não valida o formulário no navegador.</p></td></tr></table><p><a href="https://cloud.google.com/recaptcha/docs/create-key-website" target="_blank" rel="noopener noreferrer">Abrir instruções oficiais do Google <span class="screen-reader-text">(abre em nova aba)</span></a> &nbsp;|&nbsp; <a href="https://www.google.com/recaptcha/admin/create?hl=pt-br" target="_blank" rel="noopener noreferrer">Criar Site key do reCAPTCHA <span class="screen-reader-text">(abre em nova aba)</span></a> &nbsp;|&nbsp; <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Criar API key no Google Cloud <span class="screen-reader-text">(abre em nova aba)</span></a></p></div></div>
@@ -692,6 +736,7 @@ class WPFV_Admin {
 				'recaptcha_api_key' => '' !== $recaptcha_api_key ? $recaptcha_api_key : $current['recaptcha_api_key'],
 				'logging_enabled'    => ! empty( $_POST['logging_enabled'] ),
 				'log_retention_days' => isset( $_POST['log_retention_days'] ) ? absint( $_POST['log_retention_days'] ) : 90,
+				'attachment_retention_days' => isset( $_POST['attachment_retention_days'] ) ? min( 3650, absint( $_POST['attachment_retention_days'] ) ) : 0,
 			)
 		);
 		if ( $credentials_changed ) {

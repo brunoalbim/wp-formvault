@@ -126,12 +126,15 @@
 	function bindAjax(form, data) {
 		if (form.dataset.wpfvAjaxBound === '1' || !window.fetch || !window.FormData || !window.wpFormVault) { return; }
 		form.dataset.wpfvAjaxBound = '1';
+		setupFiles(form);
 		setupValidation(form);
 		form.addEventListener('submit', function (event) {
 			event.preventDefault();
 			if (form.dataset.wpfvSubmitting === '1') { return; }
 
 			inject(form, data);
+			form.querySelectorAll('.wpfv-field-error').forEach(function (node) { node.textContent = ''; node.hidden = true; });
+			form.querySelectorAll('[aria-invalid="true"]').forEach(function (node) { node.setAttribute('aria-invalid', 'false'); });
 			form.dataset.wpfvSubmitting = '1';
 			form.setAttribute('aria-busy', 'true');
 			var button = form.querySelector('[type="submit"]');
@@ -154,6 +157,7 @@
 			}).then(function (payload) {
 				var responseData = payload && payload.data ? payload.data : {};
 				if (!payload.success) {
+					showFieldMessages(form, responseData.field_messages);
 					showNotice(form, responseData.message || window.wpFormVault.networkError, false);
 					return;
 				}
@@ -179,6 +183,44 @@
 		var node = input.parentNode.querySelector('.wpfv-field-error');
 		if (!node) { node = document.createElement('span'); node.className = 'wpfv-field-error'; input.parentNode.appendChild(node); }
 		node.textContent = message || ''; node.hidden = !message; input.setAttribute('aria-invalid', message ? 'true' : 'false');
+	}
+
+	function showFieldMessages(form, messages) {
+		Object.keys(messages || {}).forEach(function (name) {
+			var input = form.querySelector('[name="' + name + '"]');
+			if (input) { errorFor(input, messages[name]); }
+		});
+	}
+
+	function fileError(input, rule) {
+		var file = input.files && input.files[0];
+		if (!file) { return ''; }
+		var extension = (file.name.split('.').pop() || '').toLowerCase();
+		if (file.name.indexOf('.') < 0 || rule.accept.indexOf(extension) < 0) { return rule.typeMessage; }
+		if (file.size > rule.maxBytes) { return rule.sizeMessage; }
+		return '';
+	}
+
+	function setupFiles(form) {
+		var rules = window.wpFormVault.files && window.wpFormVault.files[form.getAttribute('data-wpfv-form')];
+		if (!rules) { return; }
+		Object.keys(rules).forEach(function (name) {
+			var input = form.querySelector('input[type="file"][name="' + name + '"]');
+			if (!input) { return; }
+			if (!input.getAttribute('accept')) { input.setAttribute('accept', rules[name].accept.map(function (ext) { return '.' + ext; }).join(',')); }
+			input.addEventListener('change', function () { errorFor(input, fileError(input, rules[name])); });
+		});
+		form.addEventListener('submit', function (event) {
+			var valid = true;
+			Object.keys(rules).forEach(function (name) {
+				var input = form.querySelector('input[type="file"][name="' + name + '"]');
+				if (!input) { return; }
+				var message = fileError(input, rules[name]);
+				errorFor(input, message);
+				if (message) { valid = false; }
+			});
+			if (!valid) { event.preventDefault(); event.stopImmediatePropagation(); }
+		}, true);
 	}
 
 	function emailBlock(email, cfg) {
