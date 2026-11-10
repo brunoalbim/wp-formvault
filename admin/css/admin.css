@@ -454,3 +454,13 @@
 		margin-top: 10px;
 	}
 }
+
+.wpfv-webhook-test-details pre {
+	max-height: 320px;
+	overflow: auto;
+	padding: 10px 12px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
