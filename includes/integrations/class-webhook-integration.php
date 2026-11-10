@@ -12,11 +12,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 class WPFV_Webhook_Integration implements WPFV_Integration {
 	/** {@inheritdoc} */
 	public function deliver( $submission, $form, $settings ) {
-		$url = esc_url_raw( $settings['webhook_url'] );
-		if ( ! wp_http_validate_url( $url ) ) {
-			return array( 'success' => false, 'code' => 0, 'error' => 'URL de webhook inválida.' );
-		}
-
 		$source        = sanitize_key( $submission->form_id );
 		$mapped_fields = ( new WPFV_Field_Mapper() )->webhook_fields( json_decode( $submission->fields, true ), $settings );
 		$payload       = array(
@@ -35,11 +30,120 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 		if ( $attachments ) {
 			$payload['form']['attachments'] = $attachments;
 		}
+
+		return $this->send( $settings, $payload, array( 'X-WP-FormVault-Submission' => (string) $submission->id ), $attachments ? 30 : 10 );
+	}
+
+	/**
+	 * Send a test delivery with fictitious data, using the same format as a real submission.
+	 *
+	 * @param array $form Registered form definition.
+	 * @param array $settings Effective webhook settings (URL, secret and field map).
+	 * @return array Delivery result plus the payload that was sent.
+	 */
+	public function test( $form, $settings ) {
+		$source      = sanitize_key( $form['id'] );
+		$fields      = array();
+		$attachments = array();
+		foreach ( $form['fields'] as $field_id => $definition ) {
+			$fields[ $field_id ] = $this->sample_value( $field_id, $definition );
+			if ( 'file' === $definition['type'] ) {
+				$content       = "Arquivo de teste enviado pelo WP FormVault.\nFormulário: " . $form['name'] . "\nData: " . gmdate( 'c' ) . "\n";
+				$attachments[] = array(
+					'field'          => sanitize_key( $field_id ),
+					'name'           => $fields[ $field_id ],
+					'mime_type'      => 'text/plain',
+					'size'           => strlen( $content ),
+					'sha256'         => hash( 'sha256', $content ),
+					'available'      => true,
+					'content_base64' => base64_encode( $content ),
+				);
+			}
+		}
+
+		$payload = array(
+			'source' => $source,
+			'test'   => true,
+			'form'   => array(
+				'source' => $source,
+				'fields' => (object) ( new WPFV_Field_Mapper() )->webhook_fields( $fields, $settings ),
+				'page'   => array(
+					'title'          => sanitize_text_field( 'Teste de webhook — ' . $form['name'] ),
+					'conversion_url' => esc_url_raw( home_url( '/' ) ),
+				),
+				'utm'    => (object) array(
+					'utm_source'         => 'wp-formvault',
+					'utm_medium'         => 'teste',
+					'utm_campaign'       => 'teste-webhook',
+					'normalized_source'  => 'wp-formvault',
+					'attribution_method' => 'teste',
+				),
+			),
+		);
+		if ( $attachments ) {
+			$payload['form']['attachments'] = $attachments;
+		}
+
+		$result            = $this->send( $settings, $payload, array( 'X-WP-FormVault-Submission' => '0', 'X-WP-FormVault-Test' => '1' ), 15 );
+		$result['payload'] = $payload;
+		return $result;
+	}
+
+	/**
+	 * Fictitious value for a registered field, following its type.
+	 *
+	 * @param string $field_id Field identifier.
+	 * @param array  $definition Normalized field definition.
+	 * @return string|int
+	 */
+	private function sample_value( $field_id, $definition ) {
+		$token = strtolower( wp_generate_password( 6, false, false ) );
+		switch ( $definition['type'] ) {
+			case 'email':
+				return 'teste+' . $token . '@example.com';
+			case 'tel':
+				return sprintf( '(11) 9%04d-%04d', wp_rand( 0, 9999 ), wp_rand( 0, 9999 ) );
+			case 'url':
+				return 'https://example.com/teste-' . $token;
+			case 'integer':
+				return wp_rand( 1, 100 );
+			case 'checkbox':
+				return '1';
+			case 'select':
+				return ! empty( $definition['options'] ) ? (string) reset( $definition['options'] ) : 'Opção de teste';
+			case 'textarea':
+				return 'Mensagem de teste (' . $token . ') enviada pelo WP FormVault para validar o webhook.';
+			case 'file':
+				return 'arquivo-teste-' . $token . '.txt';
+			case 'hidden':
+				return 'teste-' . $token;
+			default:
+				return 'Teste ' . ucfirst( $token ) . ( preg_match( '/nome|name/', $field_id ) ? ' da Silva' : '' );
+		}
+	}
+
+	/**
+	 * POST a JSON payload, signed when a secret is configured.
+	 *
+	 * @param array $settings Webhook settings.
+	 * @param array $payload Body to encode.
+	 * @param array $extra_headers Additional headers.
+	 * @param int   $timeout Request timeout in seconds.
+	 * @return array
+	 */
+	private function send( $settings, $payload, $extra_headers, $timeout ) {
+		$url = esc_url_raw( $settings['webhook_url'] );
+		if ( ! wp_http_validate_url( $url ) ) {
+			return array( 'success' => false, 'code' => 0, 'error' => 'URL de webhook inválida.' );
+		}
+
 		$body    = wp_json_encode( $payload );
-		$headers = array(
-			'Content-Type'                => 'application/json; charset=utf-8',
-			'X-WP-FormVault-Event'        => 'form.submitted',
-			'X-WP-FormVault-Submission'   => (string) $submission->id,
+		$headers = array_merge(
+			array(
+				'Content-Type'         => 'application/json; charset=utf-8',
+				'X-WP-FormVault-Event' => 'form.submitted',
+			),
+			$extra_headers
 		);
 
 		if ( ! empty( $settings['webhook_secret'] ) ) {
@@ -48,7 +152,7 @@ class WPFV_Webhook_Integration implements WPFV_Integration {
 
 		$response = wp_safe_remote_post(
 			$url,
-			array( 'timeout' => $attachments ? 30 : 10, 'redirection' => 2, 'headers' => $headers, 'body' => $body, 'data_format' => 'body' )
+			array( 'timeout' => $timeout, 'redirection' => 2, 'headers' => $headers, 'body' => $body, 'data_format' => 'body' )
 		);
 
 		if ( is_wp_error( $response ) ) {

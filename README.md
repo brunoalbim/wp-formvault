@@ -182,6 +182,12 @@ Quando o envio tem anexos, `form.attachments` lista cada arquivo com o conteúdo
 ]
 ```
 
+### Envio de teste
+
+Na aba **Webhook** de cada formulário, o botão **Enviar teste** manda um payload no mesmo formato de um envio real, com dados fictícios, sem precisar preencher o formulário nem salvar a tela: usa a URL, o segredo (ou o segredo salvo, se o campo estiver vazio) e o mapeamento que estão na tela. Os valores seguem o tipo de cada campo: texto aleatório, e-mail `teste+…@example.com`, telefone, URL, número, `"1"` para checkbox, a primeira opção para `select` e, para `file`, um `.txt` pequeno em `form.attachments`.
+
+O teste é identificado por `"test": true` na raiz do JSON e pelo header `X-WP-FormVault-Test: 1`; `X-WP-FormVault-Submission` vem como `0` e o evento continua `form.submitted`. Nenhum contato é criado em Envios; o resultado aparece ao lado do botão (com o payload e a resposta) e fica registrado em **Logs**.
+
 ## Extensão
 
 Novas integrações devem implementar `WPFV_Integration` e ser registradas pelo filtro `wpfv_integrations`. O hook `wpfv_submission_stored` só é disparado depois que o envio passa pelas proteções antispam ou é aprovado manualmente.

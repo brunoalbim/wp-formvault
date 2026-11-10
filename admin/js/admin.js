@@ -73,6 +73,58 @@
 		} );
 	} );
 
+	document.querySelectorAll( '.wpfv-webhook-test' ).forEach( function ( box ) {
+		const button = box.querySelector( '.wpfv-test-webhook' );
+		const status = box.querySelector( '.wpfv-webhook-test-status' );
+		const details = box.querySelector( '.wpfv-webhook-test-details' );
+		const form = box.closest( 'form' );
+		if ( ! button || ! status || ! form ) {
+			return;
+		}
+
+		button.addEventListener( 'click', function () {
+			const body = new URLSearchParams();
+			body.append( 'action', 'wpfv_test_webhook' );
+			body.append( '_ajax_nonce', window.wpfvAdmin.nonce );
+			body.append( 'form_id', box.dataset.formId || '' );
+			[ 'webhook_url', 'webhook_secret' ].forEach( function ( name ) {
+				const input = form.querySelector( '[name="' + name + '"]' );
+				body.append( name, input ? input.value : '' );
+			} );
+			form.querySelectorAll( '[name="webhook_source[]"], [name="webhook_target[]"]' ).forEach( function ( input ) {
+				body.append( input.name, input.value );
+			} );
+
+			button.disabled = true;
+			status.textContent = 'Enviando teste…';
+			status.style.color = '';
+			if ( details ) details.hidden = true;
+
+			fetch( window.wpfvAdmin.ajaxUrl, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+				body: body.toString(),
+				credentials: 'same-origin'
+			} ).then( function ( response ) {
+				return response.json();
+			} ).then( function ( response ) {
+				const data = response.data || {};
+				status.textContent = data.message || ( response.success ? 'Teste enviado.' : 'Falha ao enviar o teste.' );
+				status.style.color = response.success ? '#008a20' : '#b32d2e';
+				if ( details && data.payload ) {
+					details.querySelector( '.wpfv-webhook-test-payload' ).textContent = JSON.stringify( data.payload, null, 2 );
+					details.querySelector( '.wpfv-webhook-test-response' ).textContent = ( data.code ? 'HTTP ' + data.code + '\n' : '' ) + ( data.body || '(sem corpo)' );
+					details.hidden = false;
+				}
+			} ).catch( function () {
+				status.textContent = 'Não foi possível concluir o teste. Tente novamente.';
+				status.style.color = '#b32d2e';
+			} ).finally( function () {
+				button.disabled = false;
+			} );
+		} );
+	} );
+
 	function requestCatalog( catalog, extra ) {
 		const body = new URLSearchParams( Object.assign( {
 			action: 'wpfv_pipedrive_catalog',

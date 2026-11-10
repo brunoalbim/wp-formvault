@@ -27,6 +27,7 @@ class WPFV_Admin {
 		add_action( 'wp_ajax_wpfv_test_brevo', array( $this, 'test_brevo' ) );
 		add_action( 'wp_ajax_wpfv_test_recaptcha', array( $this, 'test_recaptcha' ) );
 		add_action( 'wp_ajax_wpfv_test_rdcrm', array( $this, 'test_rdcrm' ) );
+		add_action( 'wp_ajax_wpfv_test_webhook', array( $this, 'test_webhook' ) );
 		add_action( 'wp_ajax_wpfv_rdcrm_catalog', array( $this, 'rdcrm_catalog' ) );
 		add_action( 'wp_ajax_wpfv_rdcrm_refresh_catalogs', array( $this, 'rdcrm_refresh_catalogs' ) );
 		add_action( 'admin_post_wpfv_rdcrm_connect', array( $this, 'rdcrm_connect' ) );
@@ -553,7 +554,7 @@ class WPFV_Admin {
 				</section>
 
 				<section id="wpfv-webhook" class="wpfv-tab-panel" hidden>
-					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Entrega via webhook</h2><p>Envie o contato em JSON para uma aplicação externa.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Ativação</th><td><label><input type="checkbox" name="webhook_enabled" value="1" <?php checked( $settings['webhook_enabled'] ); ?>> Enviar webhook</label></td></tr><tr><th scope="row"><label for="wpfv-webhook-url">URL</label></th><td><input id="wpfv-webhook-url" class="large-text code" type="url" name="webhook_url" value="<?php echo esc_attr( $settings['webhook_url'] ); ?>"></td></tr><tr><th scope="row"><label for="wpfv-webhook-secret">Segredo HMAC</label></th><td><input id="wpfv-webhook-secret" class="large-text" type="password" autocomplete="new-password" name="webhook_secret" value="" placeholder="<?php echo $settings['webhook_secret'] ? esc_attr__( 'Segredo configurado — deixe vazio para manter', 'wp-formvault' ) : ''; ?>"><p class="description">Assina o corpo no header <code>X-WP-FormVault-Signature</code>.</p></td></tr></table></div></div>
+					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Entrega via webhook</h2><p>Envie o contato em JSON para uma aplicação externa.</p></div><div class="wpfv-card-body"><table class="form-table" role="presentation"><tr><th scope="row">Ativação</th><td><label><input type="checkbox" name="webhook_enabled" value="1" <?php checked( $settings['webhook_enabled'] ); ?>> Enviar webhook</label></td></tr><tr><th scope="row"><label for="wpfv-webhook-url">URL</label></th><td><input id="wpfv-webhook-url" class="large-text code" type="url" name="webhook_url" value="<?php echo esc_attr( $settings['webhook_url'] ); ?>"></td></tr><tr><th scope="row"><label for="wpfv-webhook-secret">Segredo HMAC</label></th><td><input id="wpfv-webhook-secret" class="large-text" type="password" autocomplete="new-password" name="webhook_secret" value="" placeholder="<?php echo $settings['webhook_secret'] ? esc_attr__( 'Segredo configurado — deixe vazio para manter', 'wp-formvault' ) : ''; ?>"><p class="description">Assina o corpo no header <code>X-WP-FormVault-Signature</code>.</p></td></tr><tr><th scope="row">Teste</th><td><div class="wpfv-webhook-test" data-form-id="<?php echo esc_attr( $form['id'] ); ?>"><p><button type="button" class="button button-secondary wpfv-test-webhook">Enviar teste</button> <span class="wpfv-connection-status wpfv-webhook-test-status" role="status" aria-live="polite"></span></p><p class="description">Envia dados fictícios para a URL acima usando o mapeamento desta tela, mesmo sem salvar. Selects usam a primeira opção; o JSON leva <code>"test": true</code> e o header <code>X-WP-FormVault-Test: 1</code>.</p><details class="wpfv-webhook-test-details" hidden><summary>Ver detalhes do teste</summary><p><strong>Payload enviado</strong></p><pre class="wpfv-webhook-test-payload"></pre><p><strong>Resposta</strong></p><pre class="wpfv-webhook-test-response"></pre></details></div></td></tr></table></div></div>
 					<div class="card wpfv-admin-card"><div class="wpfv-card-header"><h2>Mapeamento de campos</h2><p>Renomeie as chaves enviadas no objeto <code>form.fields</code>. Cada origem e destino deve ser único.</p></div><div class="wpfv-card-body"><?php $this->mapping_rows( 'webhook', $settings['webhook_field_map'], $form, false ); ?></div></div>
 				</section>
 
@@ -759,6 +760,57 @@ class WPFV_Admin {
 		wp_send_json_error( array( 'message' => $result['message'] ) );
 	}
 	public function test_rdcrm(){check_ajax_referer('wpfv_api_test');if(!current_user_can('manage_options'))wp_send_json_error();$r=(new WPFV_RDCRM_API())->test();$m=!empty($r['success'])?'Conexão válida com o RD CRM.':$r['error'];if(empty($r['success']))$this->rdcrm_admin_error('teste de conexão',$r);else {delete_transient('wpfv_rdcrm_error_'.get_current_user_id());WPFV_RDCRM_API::clear_health();}!empty($r['success'])?wp_send_json_success(array('message'=>$m)):wp_send_json_error(array('message'=>$m));}
+	/**
+	 * Send fictitious data to the webhook using the values currently on screen.
+	 *
+	 * @return void
+	 */
+	public function test_webhook() {
+		check_ajax_referer( 'wpfv_admin' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Acesso negado.', 'wp-formvault' ) ), 403 );
+		}
+		$form = $this->registry->get( isset( $_POST['form_id'] ) ? sanitize_key( wp_unslash( $_POST['form_id'] ) ) : '' );
+		if ( ! $form ) {
+			wp_send_json_error( array( 'message' => 'Formulário não encontrado.' ) );
+		}
+
+		$settings = WPFV_Settings::get_for_form( $form );
+		$url      = isset( $_POST['webhook_url'] ) ? esc_url_raw( trim( wp_unslash( $_POST['webhook_url'] ) ) ) : '';
+		$secret   = isset( $_POST['webhook_secret'] ) ? sanitize_text_field( wp_unslash( $_POST['webhook_secret'] ) ) : '';
+		if ( '' === $url ) {
+			wp_send_json_error( array( 'message' => 'Informe a URL do webhook antes de testar.' ) );
+		}
+		$settings['webhook_url']       = $url;
+		$settings['webhook_secret']    = '' !== $secret ? $secret : $settings['webhook_secret'];
+		$settings['webhook_field_map'] = $this->sanitize_webhook_map( $form );
+
+		$result  = ( new WPFV_Webhook_Integration() )->test( $form, $settings );
+		$success = ! empty( $result['success'] );
+		$message = $success ? 'Teste enviado com sucesso (HTTP ' . (int) $result['code'] . ').' : ( ! empty( $result['error'] ) ? $result['error'] : 'Falha ao enviar o teste.' );
+		$this->repository->log(
+			$success ? 'success' : 'error',
+			'webhook',
+			( $success ? 'Teste de webhook enviado' : 'Falha no teste de webhook' ) . ' — ' . $form['name'] . '.',
+			array(
+				'test'    => true,
+				'form_id' => $form['id'],
+				'url'     => $url,
+				'signed'  => ! empty( $settings['webhook_secret'] ),
+				'code'    => isset( $result['code'] ) ? (int) $result['code'] : 0,
+				'body'    => isset( $result['body'] ) ? $result['body'] : '',
+				'error'   => isset( $result['error'] ) ? $result['error'] : '',
+			)
+		);
+
+		$data = array(
+			'message'  => $message,
+			'code'     => isset( $result['code'] ) ? (int) $result['code'] : 0,
+			'body'     => isset( $result['body'] ) ? $result['body'] : '',
+			'payload'  => isset( $result['payload'] ) ? $result['payload'] : null,
+		);
+		$success ? wp_send_json_success( $data ) : wp_send_json_error( $data );
+	}
 	public function rdcrm_connect(){if(!current_user_can('manage_options'))wp_die('Acesso negado.');check_admin_referer('wpfv_rdcrm_connect');$api=new WPFV_RDCRM_API();if(!$api->configured())wp_die('Salve as credenciais antes de conectar.');$state=wp_generate_password(48,false,false);set_transient('wpfv_rdcrm_state_'.get_current_user_id(),$state,10*MINUTE_IN_SECONDS);wp_redirect($api->authorization_url($state));exit;}
 	public function rdcrm_oauth_callback(){if(!current_user_can('manage_options'))wp_die('Acesso negado.');$state=isset($_GET['state'])?sanitize_text_field(wp_unslash($_GET['state'])):'';$saved=get_transient('wpfv_rdcrm_state_'.get_current_user_id());delete_transient('wpfv_rdcrm_state_'.get_current_user_id());if(!$saved||!hash_equals($saved,$state))wp_die('Estado OAuth inválido.');$code=isset($_GET['code'])?sanitize_text_field(wp_unslash($_GET['code'])):'';$provider_error=isset($_GET['error'])?sanitize_text_field(wp_unslash($_GET['error'])):'';$provider_detail=isset($_GET['error_description'])?sanitize_text_field(wp_unslash($_GET['error_description'])):'';$r=$provider_error?array('success'=>false,'code'=>0,'error'=>'RD CRM: autorização recusada: '.$provider_error.($provider_detail?' — '.$provider_detail:'')):(new WPFV_RDCRM_API())->exchange_code($code);if(empty($r['success']))$this->rdcrm_admin_error('autorização OAuth',$r);else {delete_transient('wpfv_rdcrm_error_'.get_current_user_id());$this->invalidate_rdcrm_catalog_cache();}wp_safe_redirect(admin_url('admin.php?page=wpfv-settings&rdcrm='.(!empty($r['success'])?'connected':'error').'#wpfv-settings-integrations'));exit;}
 	public function rdcrm_disconnect(){if(!current_user_can('manage_options'))wp_die('Acesso negado.');check_admin_referer('wpfv_rdcrm_disconnect');(new WPFV_RDCRM_API())->disconnect();$this->invalidate_rdcrm_catalog_cache();wp_safe_redirect(admin_url('admin.php?page=wpfv-settings&rdcrm=disconnected#wpfv-settings-integrations'));exit;}
