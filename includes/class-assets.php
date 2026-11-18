@@ -54,6 +54,7 @@ class WPFV_Assets {
 			'wpFormVault',
 			array(
 				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
+				'tokensAction' => WPFV_Form_Tokens::ACTION,
 				'sendingLabel' => __( 'Enviando…', 'wp-formvault' ),
 				'networkError' => __( 'Não foi possível enviar agora. Verifique sua conexão e tente novamente.', 'wp-formvault' ),
 				'validations'  => $validation_forms,

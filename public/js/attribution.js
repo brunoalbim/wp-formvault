@@ -81,6 +81,48 @@
 		});
 	}
 
+	// Replace the nonce and signed render timestamp printed in the HTML, which
+	// are wrong for the visitor when a page cache served the page (stale copy or
+	// the anonymous copy served to a logged-in user). See class-form-tokens.php.
+	var TOKEN_TTL = 10 * 60 * 1000;
+
+	function refreshTokens(form) {
+		var config = window.wpFormVault;
+		if (!config.tokensAction || !window.fetch || !window.FormData) { return Promise.resolve(); }
+		if (form.wpfvTokenRequest) { return form.wpfvTokenRequest; }
+		var fetchedAt = Number(form.dataset.wpfvTokensAt || 0);
+		if (fetchedAt && Date.now() - fetchedAt < TOKEN_TTL) { return Promise.resolve(); }
+
+		var body = new FormData();
+		body.append('action', config.tokensAction);
+		['wpfv_form_id', 'wpfv_started_at', 'wpfv_started_sig'].forEach(function (name) {
+			var input = form.querySelector('input[name="' + name + '"]');
+			body.append(name, input ? input.value : '');
+		});
+		if (!body.get('wpfv_form_id')) { body.set('wpfv_form_id', form.getAttribute('data-wpfv-form') || ''); }
+
+		form.wpfvTokenRequest = fetch(config.ajaxUrl, {
+			method: 'POST',
+			body: body,
+			credentials: 'same-origin',
+			cache: 'no-store',
+			headers: { 'X-Requested-With': 'XMLHttpRequest' }
+		}).then(function (response) {
+			return response.ok ? response.json() : null;
+		}).then(function (payload) {
+			if (!payload || !payload.success || !payload.data) { return; }
+			Object.keys(payload.data).forEach(function (name) {
+				plainHidden(form, name, payload.data[name]);
+			});
+			form.dataset.wpfvTokensAt = String(Date.now());
+		}).catch(function () {
+			// Keep the values from the HTML; the server validates them as usual.
+		}).then(function () {
+			form.wpfvTokenRequest = null;
+		});
+		return form.wpfvTokenRequest;
+	}
+
 	function inject(form, data) {
 		ATTRIBUTION_KEYS.forEach(function (key) {
 			hidden(form, 'first_' + key, data.first && data.first[key]);
@@ -128,6 +170,7 @@
 		form.dataset.wpfvAjaxBound = '1';
 		setupFiles(form);
 		setupValidation(form);
+		form.addEventListener('focusin', function () { refreshTokens(form); }, { once: true });
 		form.addEventListener('submit', function (event) {
 			event.preventDefault();
 			if (form.dataset.wpfvSubmitting === '1') { return; }
@@ -144,7 +187,9 @@
 				button.textContent = window.wpFormVault.sendingLabel;
 			}
 
-			recaptchaToken(form).then(function (token) {
+			refreshTokens(form).then(function () {
+				return recaptchaToken(form);
+			}).then(function (token) {
 				plainHidden(form, 'wpfv_recaptcha_token', token);
 				return fetch(window.wpFormVault.ajaxUrl, {
 					method: 'POST',

@@ -95,6 +95,30 @@ O helper adiciona `action`, ID do formulário, nonce, marcador temporal assinado
 
 Somente campos declarados no esquema são processados. Não inclua credenciais, URLs ou dados específicos de cliente no código reutilizável.
 
+## Cache de página e tokens de segurança
+
+`wpfv_form_hidden_fields()` imprime no HTML um nonce (`wpfv_nonce`) e um marcador temporal assinado (`wpfv_started_at` e `wpfv_started_sig`). Quando um plugin de cache (LiteSpeed, WP Rocket, W3TC, cache do servidor ou CDN) entrega uma cópia guardada da página, esses valores podem não valer para o visitante:
+
+| Situação | Sintoma sem a correção |
+|---|---|
+| Cópia anônima entregue a um usuário logado (o nonce depende do usuário) | Envio recusado com "Revise os campos obrigatórios e tente novamente." (HTTP 422, `fields` vazio) |
+| Cópia com mais de 12–24 h (o nonce expirou) | O mesmo erro acima |
+| Cópia com mais de 24 h (`MAX_FORM_AGE`) | Envio **descartado sem aviso**: o visitante vê sucesso, mas nada é gravado |
+
+Desde a versão 1.11.0, o script do plugin resolve isso sozinho em todo formulário com `data-wpfv-form`: na primeira interação com o formulário e logo antes de cada envio AJAX, ele consulta `admin-ajax.php?action=wpfv_form_tokens` (resposta com `nocache_headers()`) e substitui os três valores. O endpoint:
+
+- gera um nonce novo para o usuário da requisição;
+- mantém o marcador temporal original quando a assinatura é válida e ele ainda tem mais de 1 h de validade, preservando a medição do tempo mínimo de preenchimento;
+- quando a assinatura é válida, mas o marcador está vencido ou perto de vencer, emite um marcador que já cumpre o tempo mínimo, em vez de deixar o envio ser descartado;
+- quando a assinatura falta ou é inválida, emite um marcador com o horário atual.
+
+Requisitos e observações:
+
+- Mantenha `wp-admin/admin-ajax.php` fora de qualquer cache. Os plugins de cache já fazem isso por padrão; confira em regras de CDN e de servidor.
+- Não é preciso, e não é recomendado, criar no tema um endpoint próprio para renovar esses tokens. Para verificar se o plugin instalado tem a correção, use `class_exists( 'WPFV_Form_Tokens' )`.
+- Envios sem JavaScript continuam usando os valores do HTML e por isso seguem sujeitos ao cache; em páginas cacheadas, prefira manter o envio AJAX.
+- Para diagnosticar, veja na aba de rede a resposta de `admin-ajax.php`: `"status":"invalid"` com `fields` vazio indica nonce inválido; `fields` preenchido indica erro de validação de campo.
+
 ## Proteção antispam
 
 As proteções locais são automáticas: honeypot, tempo mínimo de preenchimento, limite de cinco envios por IP a cada dez minutos e supressão de payloads idênticos por dez minutos. Para o rate limit, o plugin usa somente um identificador criptográfico do IP. O IP bruto não é persistido pelo plugin; quando o reCAPTCHA está ativo, ele é enviado ao Google como contexto da avaliação, o que deve ser refletido na política de privacidade do site.

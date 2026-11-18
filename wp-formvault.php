@@ -3,7 +3,7 @@
  * Plugin Name: WP FormVault
  * Plugin URI:  https://github.com/brunoalbim/wp-formvault
  * Description: Captura, valida e armazena formulários criados em código, com notificações por e-mail e webhooks configuráveis.
- * Version:     1.10.0
+ * Version:     1.11.0
  * Author:      Bruno Albim
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPFV_VERSION', '1.10.0' );
+define( 'WPFV_VERSION', '1.11.0' );
 define( 'WPFV_FILE', __FILE__ );
 define( 'WPFV_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPFV_URL', plugin_dir_url( __FILE__ ) );
@@ -42,6 +42,7 @@ require_once WPFV_DIR . 'includes/integrations/class-brevo-integration.php';
 require_once WPFV_DIR . 'includes/integrations/class-rdcrm-integration.php';
 require_once WPFV_DIR . 'includes/class-integration-manager.php';
 require_once WPFV_DIR . 'includes/class-submission-handler.php';
+require_once WPFV_DIR . 'includes/class-form-tokens.php';
 require_once WPFV_DIR . 'includes/class-assets.php';
 require_once WPFV_DIR . 'includes/class-admin.php';
 require_once WPFV_DIR . 'includes/class-plugin.php';
