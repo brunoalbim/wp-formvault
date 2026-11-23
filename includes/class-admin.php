@@ -38,6 +38,7 @@ class WPFV_Admin {
 		add_action( 'admin_post_wpfv_retry_delivery', array( $this, 'retry_delivery' ) );
 		add_action( 'admin_post_wpfv_retry_rdcrm_note', array( $this, 'retry_rdcrm_note' ) );
 		add_action( 'admin_post_wpfv_delete_submission', array( $this, 'delete_submission' ) );
+		add_action( 'admin_post_wpfv_bulk_submissions', array( $this, 'bulk_submissions' ) );
 		add_action( 'admin_post_wpfv_download_attachment', array( $this, 'download_attachment' ) );
 		add_action( 'admin_post_wpfv_approve_spam', array( $this, 'approve_spam' ) );
 		add_action( 'admin_notices', array( $this, 'recaptcha_health_notice' ) );
@@ -104,15 +105,28 @@ class WPFV_Admin {
 		?>
 		<div class="wrap"><h1>Contatos</h1>
 		<?php if ( isset( $_GET['retried'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Integração reenviada. O novo status já aparece na listagem.</p></div><?php endif; ?>
-		<?php if ( isset( $_GET['deleted'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Envio excluído com seu histórico local.</p></div><?php endif; ?>
+		<?php if ( isset( $_GET['deleted'] ) ) : $deleted = absint( $_GET['deleted'] ); ?><div class="notice notice-success is-dismissible"><p><?php echo $deleted > 1 ? esc_html( sprintf( '%d envios excluídos com seu histórico local.', $deleted ) ) : 'Envio excluído com seu histórico local.'; ?></p></div><?php endif; ?>
+		<?php if ( ! empty( $_GET['delete_failed'] ) ) : ?><div class="notice notice-error is-dismissible"><p><?php echo esc_html( sprintf( 'Não foi possível excluir %d envio(s). Tente novamente ou consulte os logs.', absint( $_GET['delete_failed'] ) ) ); ?></p></div><?php endif; ?>
 		<?php if ( isset( $_GET['approved'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Contato aprovado e liberado para as integrações configuradas.</p></div><?php endif; ?>
 		<ul class="subsubsub"><li><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions' ) ); ?>" <?php echo '' === $status ? 'class="current" aria-current="page"' : ''; ?>>Todos <span class="count">(<?php echo absint( $counts['all'] ); ?>)</span></a> | </li><li><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&status=legitimate' ) ); ?>" <?php echo 'legitimate' === $status ? 'class="current" aria-current="page"' : ''; ?>>Legítimos <span class="count">(<?php echo absint( $counts['legitimate'] ); ?>)</span></a> | </li><li><a href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&status=spam' ) ); ?>" <?php echo 'spam' === $status ? 'class="current" aria-current="page"' : ''; ?>>Spam <span class="count">(<?php echo absint( $counts['spam'] ); ?>)</span></a></li></ul>
 		<form method="get" class="wpfv-submission-filters"><input type="hidden" name="page" value="wpfv-submissions"><input type="hidden" name="status" value="<?php echo esc_attr( $status ); ?>">
 		<select name="form_id"><option value="">Todos os formulários</option><?php foreach ( $forms as $form ) : ?><option value="<?php echo esc_attr( $form['id'] ); ?>" <?php selected( $form_id, $form['id'] ); ?>><?php echo esc_html( $form['name'] ); ?></option><?php endforeach; ?></select>
 		<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="Nome, e-mail ou conteúdo"> <?php submit_button( 'Filtrar', 'secondary', '', false ); ?></form>
-		<table class="widefat striped wpfv-submissions-table"><thead><tr><th>ID</th><th>Data</th><th>Status</th><th>Formulário</th><th>Nome</th><th>E-mail</th><th>Integrações</th><th>Ações</th></tr></thead><tbody>
-		<?php if ( empty( $result['items'] ) ) : ?><tr><td colspan="8">Nenhum envio registrado.</td></tr><?php endif; ?>
-		<?php foreach ( $result['items'] as $item ) : $item_deliveries = isset( $delivery_map[ (int) $item->id ] ) ? $delivery_map[ (int) $item->id ] : array(); ?><tr><td><?php echo (int) $item->id; ?></td><td><?php echo esc_html( get_date_from_gmt( $item->created_at, 'd/m/Y H:i' ) ); ?></td><td><?php $this->submission_status_badge( $item->status ); ?></td><td><?php echo esc_html( $item->form_name ); ?></td><td><?php echo esc_html( $item->primary_name ); ?></td><td><a href="mailto:<?php echo esc_attr( $item->primary_email ); ?>"><?php echo esc_html( $item->primary_email ); ?></a></td><td><?php $this->delivery_badges( $item, $item_deliveries ); ?></td><td><div class="wpfv-row-actions"><a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&view=' . (int) $item->id ) ); ?>">Detalhes</a><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Excluir este envio e todo o histórico local associado?');"><input type="hidden" name="action" value="wpfv_delete_submission"><input type="hidden" name="submission_id" value="<?php echo (int) $item->id; ?>"><?php wp_nonce_field( 'wpfv_delete_submission_' . (int) $item->id ); ?><button type="submit" class="button button-small button-link-delete">Excluir</button></form></div></td></tr><?php endforeach; ?>
+		<?php if ( ! empty( $result['items'] ) ) : ?>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="wpfv-bulk-form" class="wpfv-bulk-actions">
+			<input type="hidden" name="action" value="wpfv_bulk_submissions">
+			<input type="hidden" name="status" value="<?php echo esc_attr( $status ); ?>">
+			<input type="hidden" name="form_id" value="<?php echo esc_attr( $form_id ); ?>">
+			<input type="hidden" name="s" value="<?php echo esc_attr( $search ); ?>">
+			<?php wp_nonce_field( 'wpfv_bulk_submissions' ); ?>
+			<label class="screen-reader-text" for="wpfv-bulk-action">Selecione a ação em massa</label>
+			<select name="bulk_action" id="wpfv-bulk-action"><option value="">Ações em massa</option><option value="delete">Excluir</option></select>
+			<button type="submit" class="button action">Aplicar</button>
+		</form>
+		<?php endif; ?>
+		<table class="widefat striped wpfv-submissions-table"><thead><tr><td class="manage-column column-cb check-column"><label class="screen-reader-text" for="wpfv-select-all">Selecionar todos</label><input type="checkbox" id="wpfv-select-all"></td><th>ID</th><th>Data</th><th>Status</th><th>Formulário</th><th>Nome</th><th>E-mail</th><th>Integrações</th><th>Ações</th></tr></thead><tbody>
+		<?php if ( empty( $result['items'] ) ) : ?><tr><td colspan="9">Nenhum envio registrado.</td></tr><?php endif; ?>
+		<?php foreach ( $result['items'] as $item ) : $item_deliveries = isset( $delivery_map[ (int) $item->id ] ) ? $delivery_map[ (int) $item->id ] : array(); ?><tr><th scope="row" class="check-column"><label class="screen-reader-text" for="wpfv-cb-<?php echo (int) $item->id; ?>">Selecionar envio #<?php echo (int) $item->id; ?></label><input type="checkbox" id="wpfv-cb-<?php echo (int) $item->id; ?>" name="submission_ids[]" value="<?php echo (int) $item->id; ?>" form="wpfv-bulk-form"></th><td><?php echo (int) $item->id; ?></td><td><?php echo esc_html( get_date_from_gmt( $item->created_at, 'd/m/Y H:i' ) ); ?></td><td><?php $this->submission_status_badge( $item->status ); ?></td><td><?php echo esc_html( $item->form_name ); ?></td><td><?php echo esc_html( $item->primary_name ); ?></td><td><a href="mailto:<?php echo esc_attr( $item->primary_email ); ?>"><?php echo esc_html( $item->primary_email ); ?></a></td><td><?php $this->delivery_badges( $item, $item_deliveries ); ?></td><td><div class="wpfv-row-actions"><a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=wpfv-submissions&view=' . (int) $item->id ) ); ?>">Detalhes</a><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Excluir este envio e todo o histórico local associado?');"><input type="hidden" name="action" value="wpfv_delete_submission"><input type="hidden" name="submission_id" value="<?php echo (int) $item->id; ?>"><?php wp_nonce_field( 'wpfv_delete_submission_' . (int) $item->id ); ?><button type="submit" class="button button-small button-link-delete">Excluir</button></form></div></td></tr><?php endforeach; ?>
 		</tbody></table>
 		<?php $pages = (int) ceil( $result['total'] / $result['per_page'] ); if ( $pages > 1 ) { echo wp_kses_post( paginate_links( array( 'total' => $pages, 'current' => $page ) ) ); } ?>
 		</div><?php
@@ -245,6 +259,39 @@ class WPFV_Admin {
 		check_admin_referer( 'wpfv_delete_submission_' . $id );
 		if ( ! $this->repository->delete( $id ) ) { wp_die( esc_html__( 'Não foi possível excluir o envio.', 'wp-formvault' ) ); }
 		wp_safe_redirect( admin_url( 'admin.php?page=wpfv-submissions&deleted=1' ) );
+		exit;
+	}
+
+	/**
+	 * Apply a bulk action to the submissions selected in the list.
+	 *
+	 * @return void
+	 */
+	public function bulk_submissions() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'Acesso negado.', 'wp-formvault' ) ); }
+		check_admin_referer( 'wpfv_bulk_submissions' );
+
+		$action = isset( $_POST['bulk_action'] ) ? sanitize_key( wp_unslash( $_POST['bulk_action'] ) ) : '';
+		$ids    = isset( $_POST['submission_ids'] ) ? array_unique( array_filter( array_map( 'absint', (array) wp_unslash( $_POST['submission_ids'] ) ) ) ) : array();
+
+		$args = array( 'page' => 'wpfv-submissions' );
+		foreach ( array( 'status', 'form_id' ) as $key ) {
+			$value = isset( $_POST[ $key ] ) ? sanitize_key( wp_unslash( $_POST[ $key ] ) ) : '';
+			if ( '' !== $value ) { $args[ $key ] = $value; }
+		}
+		$search = isset( $_POST['s'] ) ? sanitize_text_field( wp_unslash( $_POST['s'] ) ) : '';
+		if ( '' !== $search ) { $args['s'] = $search; }
+
+		if ( 'delete' === $action && $ids ) {
+			$deleted = 0;
+			foreach ( $ids as $id ) {
+				if ( $this->repository->delete( $id ) ) { $deleted++; }
+			}
+			if ( $deleted ) { $args['deleted'] = $deleted; }
+			if ( count( $ids ) > $deleted ) { $args['delete_failed'] = count( $ids ) - $deleted; }
+		}
+
+		wp_safe_redirect( add_query_arg( array_map( 'rawurlencode', $args ), admin_url( 'admin.php' ) ) );
 		exit;
 	}
 

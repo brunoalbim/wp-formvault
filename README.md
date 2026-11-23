@@ -104,6 +104,8 @@ O helper adiciona `action`, ID do formulário, nonce, marcador temporal assinado
 3. Integrações opcionais só aparecem após cadastrar suas credenciais em **Contatos > Configurações**.
 4. Faça um envio e confirme o registro em **Contatos > Envios**.
 
+Em **Contatos > Envios**, marque as caixas de seleção dos envios (ou a do cabeçalho, para todos os da página), escolha **Ações em massa > Excluir** e clique em **Aplicar** para excluir vários de uma vez. Assim como a exclusão individual, a ação apaga anexos, entregas e logs de cada envio e não pode ser desfeita; os filtros ativos são mantidos após a exclusão.
+
 Somente campos declarados no esquema são processados. Não inclua credenciais, URLs ou dados específicos de cliente no código reutilizável.
 
 ## Cache de página e tokens de segurança
