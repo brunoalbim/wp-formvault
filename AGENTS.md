@@ -13,6 +13,7 @@ agente precisa saber antes de alterar o plugin ou integrar um tema a ele.
 - `public/js/attribution.js`: envio AJAX, atribuição, reCAPTCHA, validação de
   telefone/e-mail, anexos e renovação de tokens de todos os formulários com
   `data-wpfv-form`.
+- `includes/class-updater.php`: atualizações pelo painel a partir dos releases do GitHub.
 - `admin/`: painel (**Contatos**).
 - `tests/`: testes Node do classificador de atribuição.
 
@@ -82,3 +83,8 @@ gravar (`submission_id` igual a `0`). Use dados diferentes a cada teste.
 Ao alterar o comportamento, incremente `Version:` e `WPFV_VERSION` em
 `wp-formvault.php` juntos. O workflow `.github/workflows/release.yml` publica o
 release ao detectar a nova versão na `main`.
+
+Os sites recebem atualizações desse release pelo painel do WordPress
+(`includes/class-updater.php`, cabeçalho `Update URI`). Não remova o
+`Update URI` nem mude o nome do ZIP (`wp-formvault-X.Y.Z.zip`) ou o prefixo
+`v` da tag sem ajustar o verificador; a tag precisa coincidir com `Version:`.
