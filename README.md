@@ -6,6 +6,17 @@ Plugin WordPress para registrar, validar e armazenar contatos enviados por formu
 
 Após fazer o commit das alterações, execute `./package.sh` na raiz do repositório. O script cria `wp-formvault-VERSÃO.zip` com a pasta interna `wp-formvault/`, usando apenas os arquivos do commit atual. O ZIP não inclui `.git`, o script de empacotamento nem os arquivos de configuração do Git.
 
+## Atualizações automáticas
+
+Desde a versão 1.12.0, o WordPress mostra as novas versões do plugin em **Painel > Atualizações** e na tela **Plugins**, como em qualquer plugin do diretório oficial, e permite atualizar com um clique ou ativar as atualizações automáticas.
+
+- O cabeçalho `Update URI: https://github.com/brunoalbim/wp-formvault` faz o WordPress não consultar o WordPress.org para este plugin; `includes/class-updater.php` responde à verificação com o release mais recente do GitHub (ignorando rascunhos e pré-lançamentos) e instala o ZIP `wp-formvault-X.Y.Z.zip` anexado pelo workflow de release.
+- A consulta ao GitHub fica em cache por 12 horas (1 hora após uma falha). **Verificar novamente** em **Painel > Atualizações**, ou o link **Verificar atualizações** na linha do plugin, ignora o cache.
+- "Ver detalhes" mostra as notas dos últimos releases, e os requisitos de WordPress/PHP são lidos do cabeçalho da versão publicada.
+- Instalações anteriores à 1.12.0 não têm o verificador: instale a 1.12.0 manualmente uma vez; daí em diante as atualizações aparecem no painel.
+
+Para publicar uma atualização, basta incrementar `Version:` e `WPFV_VERSION` e levar a alteração para a `main`: o release criado pelo workflow é o que os sites recebem.
+
 ## Implementação de um formulário
 
 ### 1. Registrar o esquema

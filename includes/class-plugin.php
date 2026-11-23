@@ -37,6 +37,7 @@ final class WPFV_Plugin {
 		new WPFV_Submission_Handler( $this->registry, $repository, $manager );
 		new WPFV_Form_Tokens( $this->registry );
 		new WPFV_Assets();
+		new WPFV_Updater();
 
 		if ( is_admin() ) {
 			new WPFV_Admin( $this->registry, $repository, $manager );
