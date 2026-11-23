@@ -21,6 +21,27 @@
 		} );
 	} );
 
+	const bulkForm = document.getElementById( 'wpfv-bulk-form' );
+	if ( bulkForm ) {
+		bulkForm.addEventListener( 'submit', function ( event ) {
+			const action = bulkForm.querySelector( '[name="bulk_action"]' ).value;
+			const selected = document.querySelectorAll( 'input[name="submission_ids[]"][form="wpfv-bulk-form"]:checked' ).length;
+			if ( ! action ) {
+				event.preventDefault();
+				window.alert( 'Selecione uma ação em massa.' );
+				return;
+			}
+			if ( ! selected ) {
+				event.preventDefault();
+				window.alert( 'Selecione ao menos um envio.' );
+				return;
+			}
+			if ( 'delete' === action && ! window.confirm( 'Excluir ' + selected + ( 1 === selected ? ' envio' : ' envios' ) + ' e todo o histórico local associado? Esta ação não pode ser desfeita.' ) ) {
+				event.preventDefault();
+			}
+		} );
+	}
+
 	if ( window.location.hash ) {
 		const currentTab = document.querySelector( '.wpfv-nav-tab[href="' + window.location.hash + '"]' );
 		if ( currentTab ) {

@@ -372,6 +372,17 @@
 	margin-top: 16px;
 }
 
+.wpfv-bulk-actions {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	margin-top: 16px;
+}
+
+.wpfv-bulk-actions + .wpfv-submissions-table {
+	margin-top: 8px;
+}
+
 .wpfv-spam-review {
 	display: flex;
 	gap: 16px;
